@@ -21,8 +21,8 @@ static int g_win_w = 1280, g_win_h = 720;
 static int g_focus = 0; // 0=editor 1=terminal
 
 static double g_last_time = 0.0;
+static float g_editor_x, g_editor_y;
 
-// Simple open-folder dialog via Windows SHBrowseForFolder
 static int open_folder_dialog(char *out, int out_len) {
     (void)out_len;
     BROWSEINFOA bi = {0};
@@ -73,7 +73,7 @@ static void cb_resize(GLFWwindow *win, int w, int h) {
 
 static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
     (void)mods;
-    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+    if (button != GLFW_MOUSE_BUTTON_LEFT) return;
     double mx, my;
     glfwGetCursorPos(win, &mx, &my);
 
@@ -83,21 +83,23 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
     float editor_y  = toolbar_h;
     float editor_h  = g_win_h - toolbar_h - term_h;
 
+    if (action == GLFW_RELEASE) {
+        editor_mouse_release(&g_editor);
+        return;
+    }
+
     // Toolbar buttons
     if (my < toolbar_h) {
-        // Open Folder button: x=8..90
         if (mx >= 8 && mx <= 120) {
             char path[512] = "";
             if (open_folder_dialog(path, sizeof(path)))
                 fp_open_dir(&g_fp, path);
         }
-        // Open File button: x=98..180
         if (mx >= 98 && mx <= 224) {
             char path[512] = "";
             if (open_file_dialog(path, sizeof(path)))
                 editor_open_file(&g_editor, path);
         }
-        // Save button: x=188..240
         if (mx >= 188 && mx <= 292)
             editor_save_file(&g_editor);
         return;
@@ -106,13 +108,22 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
     // Terminal focus
     if (my > g_win_h - term_h) { g_focus = 1; return; }
 
-    // Editor focus
-    if (mx > sidebar_w) { g_focus = 0; return; }
+    // Editor area click
+    if (mx > sidebar_w) {
+        g_focus = 0;
+        editor_mouse_press(&g_editor, (float)mx, (float)my, g_editor_x, g_editor_y);
+        return;
+    }
 
     // Sidebar click
     const char *picked = fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h,
                                    1, (float)mx, (float)my);
     if (picked) editor_open_file(&g_editor, picked);
+}
+
+static void cb_cursor_pos(GLFWwindow *win, double mx, double my) {
+    (void)win;
+    editor_mouse_move(&g_editor, (float)mx, (float)my, g_editor_x, g_editor_y);
 }
 
 // ---- Toolbar ----------------------------------------------------------------
@@ -134,12 +145,12 @@ static void draw_toolbar(float w) {
 int main(void) {
     if (!glfwInit()) return -1;
 
-    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "Editor", NULL, NULL);
+    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE", NULL, NULL);
     if (!win) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
-    text_renderer_init("C:/Windows/Fonts/consola.ttf", 16.0f);
+    text_renderer_init("C:/Users/RAD/Documents/projects/Editor/assets/FiraCode-Regular.ttf", 16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);
 
     editor_init(&g_editor);
@@ -156,6 +167,7 @@ int main(void) {
     glfwSetCharCallback(win, cb_char);
     glfwSetFramebufferSizeCallback(win, cb_resize);
     glfwSetMouseButtonCallback(win, cb_mouse_button);
+    glfwSetCursorPosCallback(win, cb_cursor_pos);
 
     g_last_time = glfwGetTime();
 
@@ -183,8 +195,10 @@ int main(void) {
         draw_rect(sidebar_w, editor_y, 1.0f, editor_h, 0.3f, 0.3f, 0.35f, 1.0f);
 
         // Editor
+        g_editor_x = sidebar_w + 1.0f;
+        g_editor_y = editor_y;
         editor_update(&g_editor, dt);
-        editor_render(&g_editor, sidebar_w + 1.0f, editor_y, editor_w, editor_h);
+        editor_render(&g_editor, g_editor_x, g_editor_y, editor_w, editor_h);
 
         // Terminal
         term_poll_output(&g_term);

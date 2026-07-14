@@ -7,7 +7,7 @@ void init_buffer(GapBuffer *gb, int size) {
     gb->buffer = malloc(size);
     gb->total_size = size;
     gb->gap_start = 0;
-    gb->gap_end = size - 1;
+    gb->gap_end = size;
 }
 
 static void resize_buffer(GapBuffer *gb) {
@@ -35,6 +35,12 @@ void insert_char(GapBuffer *gb, char c) {
 void delete_char(GapBuffer *gb) {
     if (gb->gap_start > 0)
         gb->gap_start--;
+}
+
+void delete_range(GapBuffer *gb, int start, int end) {
+    if (start >= end) return;
+    move_cursor(gb, start);
+    gb->gap_end += (end - start);
 }
 
 void move_cursor(GapBuffer *gb, int target_position) {

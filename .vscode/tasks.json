@@ -18,7 +18,7 @@
                 "${workspaceFolder}\\src\\editor.c",
                 "${workspaceFolder}\\src\\file_panel.c",
                 "${workspaceFolder}\\src\\terminal.c",
-                "-o", "${workspaceFolder}\\output\\main.exe",
+                "-o", "${workspaceFolder}\\output\\RMGBE.exe",
                 "-L${workspaceFolder}\\lib",
                 "-lglfw3", "-lopengl32", "-lgdi32", "-lole32", "-lcomdlg32", "-lshell32", "-lm"
             ],
