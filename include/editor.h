@@ -21,6 +21,7 @@ typedef struct {
     int selection_end;   // End of the selection
     int selecting;      // Flag to indicate if selection is active
     int cursor_pos;      // buffer offset for cursor
+    int key_handled;     // suppress next char event after command key
 } Editor;
 
 void editor_init(Editor *e);

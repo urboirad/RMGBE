@@ -281,11 +281,12 @@ void editor_key(Editor *e, int key, int mods) {
     if (e->mode == MODE_NORMAL) {
         int rows = count_rows(e);
         int maxc = logical_len_of_row(e, e->cursor_row);
-        if (key == GLFW_KEY_I || key == GLFW_KEY_A) { e->mode = MODE_INSERT; return; }
+        if (key == GLFW_KEY_I || key == GLFW_KEY_A) { e->mode = MODE_INSERT; e->key_handled = 1; return; }
         if (key == GLFW_KEY_V) { 
             e->mode = MODE_VISUAL; 
             e->selection_start = offset_of(e, e->cursor_row, e->cursor_col);
             e->selection_end = e->selection_start;
+            
             return; 
         }
         if (key == GLFW_KEY_H) { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } return; }
@@ -309,6 +310,7 @@ void editor_key(Editor *e, int key, int mods) {
             insert_char(&e->gb, '\n'); e->dirty = 1;
             e->cursor_row++; e->cursor_col = 0;
             e->mode = MODE_INSERT;
+            e->key_handled = 1;
             return;
         }
         if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } return; }
@@ -316,6 +318,7 @@ void editor_key(Editor *e, int key, int mods) {
 }
 
 void editor_char(Editor *e, unsigned int cp) {
+    if (e->key_handled) { e->key_handled = 0; return; }
     if (e->mode != MODE_INSERT) return;
     if (cp < 32 || cp > 126) return;
     insert_char(&e->gb, (char)cp);
