@@ -23,6 +23,10 @@ static int g_focus = 0; // 0=editor 1=terminal
 static double g_last_time = 0.0;
 static float g_editor_x, g_editor_y;
 
+// Dropdown / modal state
+static int g_about_open = 0;
+static int g_theme_open = 0;
+
 static int open_folder_dialog(char *out, int out_len) {
     (void)out_len;
     BROWSEINFOA bi = {0};
@@ -88,7 +92,32 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         return;
     }
 
-    // Toolbar buttons
+    // Modal close buttons (drawn on top of everything)
+    if (g_about_open) {
+        float pw = 340.0f, ph = 160.0f;
+        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+        if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
+            g_about_open = 0; return;
+        }
+        // Click outside panel closes
+        if (mx < px || mx > px + pw || my < py || my > py + ph) {
+            g_about_open = 0; return;
+        }
+        return;
+    }
+    if (g_theme_open) {
+        float pw = 360.0f, ph = 240.0f;
+        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+        if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
+            g_theme_open = 0; return;
+        }
+        if (mx < px || mx > px + pw || my < py || my > py + ph) {
+            g_theme_open = 0; return;
+        }
+        return;
+    }
+
+    // Toolbar area
     if (my < toolbar_h) {
         if (mx >= 8 && mx <= 120) {
             char path[512] = "";
@@ -102,6 +131,10 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         if (mx >= 188 && mx <= 292)
             editor_save_file(&g_editor);
+        if (mx >= 300 && mx <= 400)
+            g_theme_open = 1;
+        if (mx >= 408 && mx <= 468)
+            g_about_open = 1;
         return;
     }
 
@@ -134,11 +167,54 @@ static void draw_toolbar(float w) {
         {8,   112.0f, "Open Folder"},
         {128, 96.0f,  "Open File"},
         {232, 60.0f,  "Save"},
+        {300, 100.0f, "Theme Editor"},
+        {408, 60.0f,  "About"},
     };
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
         draw_text(btns[i].label, btns[i].x + 8, 20.0f, 1.0f, 1.0f, 1.0f);
     }
+}
+
+// ---- Modals ----------------------------------------------------------------
+static void draw_about(void) {
+    if (!g_about_open) return;
+    float cw = (float)g_win_w, ch = (float)g_win_h;
+    float pw = 340.0f, ph = 160.0f;
+    float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
+
+    // Backdrop
+    draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
+    // Panel
+    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
+    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+
+    draw_text("Rick's Minimal Gap Buffer Editor", px + 16, py + 28.0f, COLOR_TEXT);
+    draw_text("Version 0.1.0", px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
+    draw_text("---", px + 16, py + 76.0f, 0.7f, 0.7f, 0.7f);
+    draw_text("no-ad technologies", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
+
+    // Close button
+    draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
+}
+
+static void draw_theme_editor(void) {
+    if (!g_theme_open) return;
+    float cw = (float)g_win_w, ch = (float)g_win_h;
+    float pw = 360.0f, ph = 240.0f;
+    float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
+
+    draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
+    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
+    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+
+    draw_text("Theme Editor", px + 16, py + 28.0f, COLOR_TEXT);
+    draw_text("Coming soon...", px + 16, py + 60.0f, 0.6f, 0.6f, 0.6f);
+
+    // Close button
+    draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
 }
 
 // ---- Main -------------------------------------------------------------------
@@ -207,6 +283,9 @@ int main(void) {
         // Focus highlight on terminal border
         if (g_focus == 1)
             draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, 0.2f, 0.8f, 0.4f, 1.0f);
+
+        draw_about();
+        draw_theme_editor();
 
         glfwSwapBuffers(win);
         glfwPollEvents();

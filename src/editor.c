@@ -206,6 +206,7 @@ void editor_key(Editor *e, int key, int mods) {
     // Copy & Paste
     if (ctrl && key == GLFW_KEY_C) { editor_copy(e); return; }
     if (ctrl && key == GLFW_KEY_V) { editor_paste(e); return; }
+    if (ctrl && key == GLFW_KEY_A) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); return; }
 
     if (e->mode == MODE_INSERT) {
         int cur = e->gb.gap_start;
