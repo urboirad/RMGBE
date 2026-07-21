@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "text_renderer.h"
+#include "syntax.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -315,6 +316,9 @@ void editor_key(Editor *e, int key, int mods) {
             return;
         }
         if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } return; }
+        if (key == GLFW_KEY_RIGHT) { if (e->cursor_col < maxc) { e->cursor_col++; move_cursor(&e->gb, e->gb.gap_start + 1); } return; }
+        if (key == GLFW_KEY_UP)    { if (e->cursor_row > 0) { e->cursor_row--; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
+        if (key == GLFW_KEY_DOWN)  { if (e->cursor_row < rows - 1) { e->cursor_row++; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
     }
 }
 
@@ -373,6 +377,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     int sel_start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
     int sel_end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
     int line_start_idx = 0;
+    SyntaxState syntax_state = {0};
 
     for (int i = 0; i <= n; i++) {
         char c = '\n';
@@ -381,8 +386,12 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
             if (bi < gb->total_size) c = gb->buffer[bi]; else c = '\n';
         }
         if (c == '\n' || i == n) {
+            line[llen] = '\0';
+            // Always tokenize to keep syntax state in sync (block comments)
+            Token dummy[1];
+            syntax_tokenize(line, dummy, 0, &syntax_state);
+
             if (ty + row >= y && ty < y + h) {
-                line[llen] = '\0';
                 // Draw selection highlight for this line
                 if (sel_start != sel_end) {
                     int hl_s = sel_start - line_start_idx;
@@ -395,9 +404,10 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
                                   0, 188/255.0f, 212/255.0f, 0.3f);
                     }
                 }
+                // Re-tokenize for actual drawing (state is already correct)
+                draw_text_highlighted(line, x + gutter, ty + ch * 0.85f, &syntax_state);
                 char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", lrow + 1);
                 draw_text(lnum, x + 4, ty + ch * 0.85f, COLOR_TEXT);
-                draw_text(line, x + gutter, ty + ch * 0.85f, COLOR_TEXT);
             }
             line_start_idx = i + 1;
             llen = 0; lrow++; ty += row;

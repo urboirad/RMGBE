@@ -10,6 +10,7 @@ add_executable(RMGBE
     src/editor.c
     src/file_panel.c
     src/terminal.c
+    src/syntax.c
 )
 
 target_include_directories(RMGBE PRIVATE include vendor)
