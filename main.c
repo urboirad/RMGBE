@@ -4,6 +4,9 @@
 #include <objbase.h>
 #else
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #endif
 
 #include "GLFW/glfw3.h"
@@ -31,6 +34,29 @@ static float g_editor_x, g_editor_y;
 // Dropdown / modal state
 static int g_about_open = 0;
 static int g_theme_open = 0;
+
+static void get_exe_dir(char *buf, int len) {
+#ifdef _WIN32
+    GetModuleFileNameA(NULL, buf, len);
+    // Strip exe name
+    char *last = strrchr(buf, '\\');
+    if (last) *last = '\0';
+#elif defined(__APPLE__)
+    uint32_t size = len;
+    _NSGetExecutablePath(buf, &size);
+    char *last = strrchr(buf, '/');
+    if (last) *last = '\0';
+#else
+    ssize_t n = readlink("/proc/self/exe", buf, len - 1);
+    if (n > 0) {
+        buf[n] = '\0';
+        char *last = strrchr(buf, '/');
+        if (last) *last = '\0';
+    } else {
+        buf[0] = '\0';
+    }
+#endif
+}
 
 #ifdef _WIN32
 static int open_folder_dialog(char *out, int out_len) {
@@ -241,7 +267,11 @@ int main(void) {
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
-    text_renderer_init("assets/FiraCode-Regular.ttf", 16.0f);
+    char font_path[1024];
+    char exe_dir[512];
+    get_exe_dir(exe_dir, sizeof(exe_dir));
+    snprintf(font_path, sizeof(font_path), "%s/../assets/FiraCode-Regular.ttf", exe_dir);
+    text_renderer_init(font_path, 16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);
 
     editor_init(&g_editor);
