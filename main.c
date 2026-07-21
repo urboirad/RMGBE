@@ -1,6 +1,11 @@
+#ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
 #include <objbase.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "GLFW/glfw3.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +32,7 @@ static float g_editor_x, g_editor_y;
 static int g_about_open = 0;
 static int g_theme_open = 0;
 
+#ifdef _WIN32
 static int open_folder_dialog(char *out, int out_len) {
     (void)out_len;
     BROWSEINFOA bi = {0};
@@ -48,6 +54,20 @@ static int open_file_dialog(char *out, int out_len) {
     out[0] = '\0';
     return GetOpenFileNameA(&ofn);
 }
+#else
+static int open_folder_dialog(char *out, int out_len) {
+    (void)out_len;
+    // No native folder dialog on Linux/Mac; fall back to cwd
+    if (getcwd(out, out_len)) return 1;
+    return 0;
+}
+
+static int open_file_dialog(char *out, int out_len) {
+    (void)out_len;
+    out[0] = '\0';
+    return 0;
+}
+#endif
 
 // ---- Callbacks --------------------------------------------------------------
 static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods) {
@@ -99,7 +119,6 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
             g_about_open = 0; return;
         }
-        // Click outside panel closes
         if (mx < px || mx > px + pw || my < py || my > py + ph) {
             g_about_open = 0; return;
         }
@@ -183,9 +202,7 @@ static void draw_about(void) {
     float pw = 340.0f, ph = 160.0f;
     float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
 
-    // Backdrop
     draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
-    // Panel
     draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
     draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
 
@@ -194,7 +211,6 @@ static void draw_about(void) {
     draw_text("---", px + 16, py + 76.0f, 0.7f, 0.7f, 0.7f);
     draw_text("no-ad technologies", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
 
-    // Close button
     draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
     draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
 }
@@ -212,7 +228,6 @@ static void draw_theme_editor(void) {
     draw_text("Theme Editor", px + 16, py + 28.0f, COLOR_TEXT);
     draw_text("Coming soon...", px + 16, py + 60.0f, 0.6f, 0.6f, 0.6f);
 
-    // Close button
     draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
     draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
 }
@@ -226,7 +241,7 @@ int main(void) {
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
-    text_renderer_init("C:/Users/RAD/Documents/projects/Editor/assets/FiraCode-Regular.ttf", 16.0f);
+    text_renderer_init("assets/FiraCode-Regular.ttf", 16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);
 
     editor_init(&g_editor);
@@ -234,7 +249,11 @@ int main(void) {
 
     // Open current dir in sidebar by default
     char cwd[512];
+#ifdef _WIN32
     if (GetCurrentDirectoryA(sizeof(cwd), cwd))
+#else
+    if (getcwd(cwd, sizeof(cwd)))
+#endif
         fp_open_dir(&g_fp, cwd);
 
     term_init(&g_term);

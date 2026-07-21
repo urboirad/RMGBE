@@ -1,1 +1,7 @@
 /output
+.vscode
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile

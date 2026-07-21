@@ -1,7 +1,11 @@
 #ifndef TERMINAL_H
 #define TERMINAL_H
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <sys/types.h>
+#endif
 
 #define TERM_LINES   256
 #define TERM_LINE_LEN 512
@@ -11,9 +15,15 @@ typedef struct {
     int    line_count;
     char   input_buf[TERM_LINE_LEN];
     int    input_len;
+#ifdef _WIN32
     HANDLE proc;
     HANDLE stdin_write;
     HANDLE stdout_read;
+#else
+    pid_t  pid;
+    int    stdin_fd;
+    int    stdout_fd;
+#endif
     float  scroll;
 } Terminal;
 

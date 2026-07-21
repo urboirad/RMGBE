@@ -3,7 +3,13 @@
 #include "GLFW/glfw3.h"
 #include <stdio.h>
 #include <string.h>
+
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 void fp_init(FilePanel *fp) {
     fp->count    = 0;
@@ -14,6 +20,8 @@ void fp_init(FilePanel *fp) {
 
 static void scan_dir(FilePanel *fp, const char *path, int depth) {
     if (fp->count >= FP_MAX_ENTRIES) return;
+
+#ifdef _WIN32
     char pattern[FP_NAME_LEN * 2 + 4];
     snprintf(pattern, sizeof(pattern), "%s\\*", path);
 
@@ -30,6 +38,28 @@ static void scan_dir(FilePanel *fp, const char *path, int depth) {
         e->depth  = depth;
     } while (FindNextFileA(h, &fd));
     FindClose(h);
+#else
+    DIR *dir = opendir(path);
+    if (!dir) return;
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        if (fp->count >= FP_MAX_ENTRIES) break;
+
+        FileEntry *e = &fp->entries[fp->count++];
+        strncpy(e->name, ent->d_name, FP_NAME_LEN - 1);
+        snprintf(e->full_path, sizeof(e->full_path), "%s/%s", path, ent->d_name);
+        e->depth = depth;
+
+        struct stat st;
+        if (stat(e->full_path, &st) == 0)
+            e->is_dir = S_ISDIR(st.st_mode);
+        else
+            e->is_dir = 0;
+    }
+    closedir(dir);
+#endif
 }
 
 void fp_open_dir(FilePanel *fp, const char *path) {

@@ -1,13 +1,22 @@
 #include "terminal.h"
 #include "text_renderer.h"
 #include "GLFW/glfw3.h"
-#include <windows.h>
 #include <string.h>
 #include <stdio.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <signal.h>
+#endif
 
 void term_init(Terminal *t) {
     memset(t, 0, sizeof(*t));
 
+#ifdef _WIN32
     HANDLE stdin_read,  stdout_write;
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     CreatePipe(&stdin_read,   &t->stdin_write,  &sa, 0);
@@ -31,16 +40,52 @@ void term_init(Terminal *t) {
     }
     CloseHandle(stdin_read);
     CloseHandle(stdout_write);
+#else
+    int stdin_pipe[2], stdout_pipe[2];
+    pipe(stdin_pipe);
+    pipe(stdout_pipe);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        execl("/bin/sh", "/bin/sh", NULL);
+        _exit(1);
+    }
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+    t->pid = pid;
+    t->stdin_fd = stdin_pipe[1];
+    t->stdout_fd = stdout_pipe[0];
+
+    // Set stdout_fd non-blocking
+    int flags = fcntl(t->stdout_fd, F_GETFL, 0);
+    fcntl(t->stdout_fd, F_SETFL, flags | O_NONBLOCK);
+#endif
 }
 
 void term_free(Terminal *t) {
+#ifdef _WIN32
     if (t->proc)        { TerminateProcess(t->proc, 0); CloseHandle(t->proc); }
     if (t->stdin_write) CloseHandle(t->stdin_write);
     if (t->stdout_read) CloseHandle(t->stdout_read);
+#else
+    if (t->pid > 0) {
+        kill(t->pid, SIGTERM);
+        waitpid(t->pid, NULL, 0);
+    }
+    if (t->stdin_fd > 0)  close(t->stdin_fd);
+    if (t->stdout_fd > 0) close(t->stdout_fd);
+#endif
 }
 
-static void term_push_text(Terminal *t, const char *buf, DWORD n) {
-    for (DWORD i = 0; i < n; i++) {
+static void term_push_text(Terminal *t, const char *buf, int n) {
+    for (int i = 0; i < n; i++) {
         char c = buf[i];
         if (c == '\r') continue;
         if (c == '\n') {
@@ -61,21 +106,35 @@ static void term_push_text(Terminal *t, const char *buf, DWORD n) {
 }
 
 void term_poll_output(Terminal *t) {
+#ifdef _WIN32
     if (!t->stdout_read) return;
     DWORD avail = 0;
     while (PeekNamedPipe(t->stdout_read, NULL, 0, NULL, &avail, NULL) && avail > 0) {
         char buf[1024];
         DWORD read = 0;
         if (ReadFile(t->stdout_read, buf, sizeof(buf) - 1, &read, NULL) && read > 0)
-            term_push_text(t, buf, read);
+            term_push_text(t, buf, (int)read);
     }
+#else
+    if (t->stdout_fd <= 0) return;
+    char buf[1024];
+    ssize_t n;
+    while ((n = read(t->stdout_fd, buf, sizeof(buf) - 1)) > 0)
+        term_push_text(t, buf, (int)n);
+#endif
 }
 
 void term_send_input(Terminal *t) {
-    if (!t->stdin_write || t->input_len == 0) return;
+    if (t->input_len == 0) return;
     t->input_buf[t->input_len++] = '\n';
+#ifdef _WIN32
+    if (!t->stdin_write) return;
     DWORD written;
     WriteFile(t->stdin_write, t->input_buf, t->input_len, &written, NULL);
+#else
+    if (t->stdin_fd <= 0) return;
+    write(t->stdin_fd, t->input_buf, t->input_len);
+#endif
     t->input_len = 0;
     t->input_buf[0] = '\0';
 }
