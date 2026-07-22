@@ -35,5 +35,6 @@ void editor_render(Editor *e, float x, float y, float w, float h);
 void editor_mouse_press(Editor *e, float px, float py, float ex, float ey);
 void editor_mouse_move(Editor *e, float px, float py, float ex, float ey);
 void editor_mouse_release(Editor *e);
+void editor_scroll(Editor *e, float yoffset);
 
 #endif

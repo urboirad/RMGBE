@@ -204,6 +204,11 @@ static void cb_cursor_pos(GLFWwindow *win, double mx, double my) {
     editor_mouse_move(&g_editor, (float)mx, (float)my, g_editor_x, g_editor_y);
 }
 
+static void cb_scroll(GLFWwindow *win, double xoff, double yoff) {
+    (void)win; (void)xoff;
+    if (g_focus == 0) editor_scroll(&g_editor, (float)yoff);
+}
+
 // ---- Toolbar ----------------------------------------------------------------
 static void draw_toolbar(float w) {
     draw_rect(0, 0, w, 32.0f, COLOR_TOOLBAR);
@@ -293,6 +298,7 @@ int main(void) {
     glfwSetFramebufferSizeCallback(win, cb_resize);
     glfwSetMouseButtonCallback(win, cb_mouse_button);
     glfwSetCursorPosCallback(win, cb_cursor_pos);
+    glfwSetScrollCallback(win, cb_scroll);
 
     g_last_time = glfwGetTime();
 

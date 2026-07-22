@@ -199,6 +199,13 @@ void editor_mouse_release(Editor *e) {
     e->selecting = 0;
 }
 
+void editor_scroll(Editor *e, float yoffset) {
+    float ch = text_char_height();
+    float row = ch + 2.0f;
+    e->scroll_y -= yoffset * 3.0f * row;
+    if (e->scroll_y < 0) e->scroll_y = 0;
+}
+
 void editor_key(Editor *e, int key, int mods) {
     int ctrl = (mods & GLFW_MOD_CONTROL);
 
