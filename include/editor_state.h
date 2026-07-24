@@ -8,8 +8,8 @@
 typedef enum { MODE_NORMAL, MODE_INSERT, MODE_VISUAL } EditorMode;
 
 typedef struct {
-    float x, y;        // logical (char col/row)
-    float vis_x, vis_y; // smoothed pixel position for rendering
+    float x, y;        // target position (pixels)
+    float vis_x, vis_y; // current position after smooth interpolation
 } SmoothedCursor;
 
 #endif

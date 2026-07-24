@@ -18,16 +18,16 @@ typedef struct {
     TokenType   type;
 } Token;
 
-// State persists across lines for multi-line comments
+// Tracks whether we're inside a /* */ block comment across lines.
 typedef struct {
     int in_block_comment;
 } SyntaxState;
 
-// Tokenize a line and write tokens into `out` (max `max_tokens`).
-// Returns number of tokens written. Updates `state` across lines.
+// Break a line into tokens (keywords, strings, comments, etc.).
+// Writes up to max_tokens into `out`. Updates state for the next line.
 int syntax_tokenize(const char *line, Token *out, int max_tokens, SyntaxState *state);
 
-// Draw a line with syntax highlighting at (x, y).
+// Draw a line with syntax-highlighted colors at (x, y).
 void draw_text_highlighted(const char *line, float x, float y,
                            SyntaxState *state);
 

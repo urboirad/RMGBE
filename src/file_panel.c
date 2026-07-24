@@ -110,7 +110,7 @@ const char *fp_update(FilePanel *fp, float x, float y, float w, float h,
 
     float ch  = text_char_height();
     float row = ch + 4.0f;
-    float ty  = y + 4.0f - fp->scroll + row + 4.0f; // skip title row
+    float ty  = y + 4.0f - fp->scroll + row + 4.0f; // start below the "FILES" title
 
     for (int i = 0; i < fp->count; i++) {
         if (my >= ty && my < ty + row) {

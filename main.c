@@ -26,19 +26,20 @@ static FilePanel g_fp;
 static Terminal  g_term;
 
 static int g_win_w = 1280, g_win_h = 720;
-static int g_focus = 0; // 0=editor 1=terminal
+// Which panel has focus: 0 = editor, 1 = terminal
+static int g_focus = 0;
 
 static double g_last_time = 0.0;
 static float g_editor_x, g_editor_y;
 
-// Dropdown / modal state
+// Popups
 static int g_about_open = 0;
 static int g_theme_open = 0;
 
 static void get_exe_dir(char *buf, int len) {
 #ifdef _WIN32
     GetModuleFileNameA(NULL, buf, len);
-    // Strip exe name
+    // Remove the exe filename, keep just the directory
     char *last = strrchr(buf, '\\');
     if (last) *last = '\0';
 #elif defined(__APPLE__)
@@ -83,7 +84,7 @@ static int open_file_dialog(char *out, int out_len) {
 #else
 static int open_folder_dialog(char *out, int out_len) {
     (void)out_len;
-    // No native folder dialog on Linux/Mac; fall back to cwd
+    // Linux/Mac don't have a native folder picker, so just use current directory
     if (getcwd(out, out_len)) return 1;
     return 0;
 }
@@ -138,7 +139,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         return;
     }
 
-    // Modal close buttons (drawn on top of everything)
+    // Close popups when clicking outside them or on their close button
     if (g_about_open) {
         float pw = 340.0f, ph = 160.0f;
         float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
@@ -217,8 +218,8 @@ static void draw_toolbar(float w) {
         {8,   112.0f, "Open Folder"},
         {128, 96.0f,  "Open File"},
         {232, 60.0f,  "Save"},
-        {300, 100.0f, "Theme Editor"},
-        {408, 60.0f,  "About"},
+        {300, 70.0f, "Theme"},
+        {380, 60.0f,  "About"},
     };
     for (int i = 0; i < 5; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
@@ -318,10 +319,10 @@ int main(void) {
 
         draw_toolbar((float)g_win_w);
 
-        // Sidebar divider
+        // Draw the sidebar file list
         fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h, 0, 0, 0);
 
-        // Divider line
+        // Line between sidebar and editor
         draw_rect(sidebar_w, editor_y, 1.0f, editor_h, 0.3f, 0.3f, 0.35f, 1.0f);
 
         // Editor
@@ -334,7 +335,7 @@ int main(void) {
         term_poll_output(&g_term);
         term_render(&g_term, 0, g_win_h - term_h, (float)g_win_w, term_h);
 
-        // Focus highlight on terminal border
+        // Green border on terminal when it has focus
         if (g_focus == 1)
             draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, 0.2f, 0.8f, 0.4f, 1.0f);
 

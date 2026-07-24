@@ -3,6 +3,13 @@ project(RMGBE C)
 
 set(CMAKE_C_STANDARD 11)
 
+# Size optimizations
+set(CMAKE_C_FLAGS_DEBUG "-g3 -O0")
+set(CMAKE_C_FLAGS_RELEASE "-Os -DNDEBUG -fno-exceptions")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-s -Wl,--gc-sections")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-unwind-tables -fno-asynchronous-unwind-tables")
+
 add_executable(RMGBE
     main.c
     src/gap_buffer.c

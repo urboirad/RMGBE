@@ -53,7 +53,7 @@ static void editor_rebuild_lines(Editor *e) {
         if (start == n) break;
         while (start < n && gb_char_logical(&e->gb, start) != '\n')
             start++;
-        start++; // skip the '\n'
+        start++; // move past the newline
     }
     e->lines_dirty = 0;
 }
@@ -63,7 +63,7 @@ void editor_open_file(Editor *e, const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return;
 
-    // Reset gap buffer
+    // Clear old content before loading new file
     free(e->gb.buffer);
     init_buffer(&e->gb, 4096);
     e->cursor_col = e->cursor_row = 0;
@@ -152,7 +152,7 @@ void editor_paste(Editor *e) {
         delete_range(&e->gb, start, end);
         move_cursor(&e->gb, start);
         e->selection_start = e->selection_end = 0;
-        // Recompute cursor_row/cursor_col from the buffer position
+    // Recalculate row/col after deleting the selection
         int r = 0, c = 0;
         int n = e->gb.gap_start + (e->gb.total_size - e->gb.gap_end);
         for (int i = 0; i < start && i < n; i++) {
@@ -162,7 +162,7 @@ void editor_paste(Editor *e) {
         e->cursor_row = r;
         e->cursor_col = c;
     }
-    // Switch to insert mode if in normal/visual so paste always works
+    // Make sure we're in insert mode so the paste actually works
     if (e->mode == MODE_VISUAL) { e->mode = MODE_NORMAL; }
     if (e->mode == MODE_NORMAL) { e->mode = MODE_INSERT; }
     for (int i = 0; clipboard[i]; i++) {
@@ -178,9 +178,8 @@ void editor_paste(Editor *e) {
     e->lines_dirty = 1;
 }
 
-// Convert pixel position (px,py) relative to window into a logical buffer offset.
-// Also updates e->cursor_row and e->cursor_col to match.
-// ex,ey is the top-left of the editor panel.
+// Convert a screen pixel position to a buffer offset.
+// Updates cursor_row/cursor_col to match. ex,ey is the top-left of the editor panel.
 static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     float cw  = text_char_width();
     float ch  = text_char_height();
@@ -377,14 +376,14 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     float ch  = text_char_height();
     float row = ch + 2.0f;
 
-    // Scroll so cursor stays visible
+    // Make sure the cursor stays on screen
     float cursor_screen_y = e->smooth.vis_y - e->scroll_y;
     if (cursor_screen_y < 0)         e->scroll_y += cursor_screen_y - row;
     if (cursor_screen_y > h - row*2) e->scroll_y += (cursor_screen_y - (h - row*2));
     if (e->scroll_y < 0) e->scroll_y = 0;
 
-    // Draw cursor (block in normal, line in insert)
-    // vis_x already includes gutter offset (set in editor_update)
+    // Draw the cursor (thin line in insert mode, block in normal/visual)
+    // vis_x already includes the gutter offset from editor_update()
     float cx = x + e->smooth.vis_x;
     float cy = y + e->smooth.vis_y - e->scroll_y + (row - ch) * 0.5f;
     if (e->mode == MODE_INSERT)
@@ -410,7 +409,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     for (int li = 0; li < e->line_count; li++) {
         int lstart = e->line_offsets[li];
         int lend = (li + 1 < e->line_count) ? e->line_offsets[li + 1] : n;
-        // lend points to the '\n' or one past end; line text is [lstart, lend)
+        // lend is the start of the next line, or one past the end of the buffer
         int llen = 0;
         for (int k = lstart; k < lend && k < n; k++) {
             char c = gb_char_logical(gb, k);
@@ -420,7 +419,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
         line[llen] = '\0';
 
         if (ty + row >= y && ty < y + h) {
-            // Draw selection highlight for this line
+        // Highlight selected text on this line
             if (sel_start != sel_end) {
                 int hl_s = sel_start - lstart;
                 int hl_e = sel_end   - lstart;
@@ -436,12 +435,12 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
             char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", li + 1);
             draw_text(lnum, x + 4, ty + ch * 0.85f, COLOR_TEXT);
         } else if (ty >= y + h) {
-            // Past visible area — still need to advance syntax state
-            // for correct block comment tracking if we render again
-            // (but we can break since we won't be below-visible again this frame)
+            // We're below the visible area — no need to keep drawing,
+            // but we still need to advance the syntax state for block comments
             break;
         } else {
-            // Above visible area: advance syntax state for block comments
+            // Line is above visible area — just advance syntax state
+            // so block comments are tracked correctly
             Token dummy[1];
             syntax_tokenize(line, dummy, 0, &syntax_state);
         }

@@ -1,8 +1,14 @@
-.PHONY: all clean
+.PHONY: all debug release clean
 
-all:
-	@mkdir -p build
-	cd build && cmake .. && $(MAKE)
+all: release
+
+debug:
+	@mkdir -p build-debug
+	cd build-debug && cmake -DCMAKE_BUILD_TYPE=Debug .. && $(MAKE)
+
+release:
+	@mkdir -p build-release
+	cd build-release && cmake -DCMAKE_BUILD_TYPE=Release .. && $(MAKE)
 
 clean:
-	rm -rf build
+	rm -rf build-debug build-release

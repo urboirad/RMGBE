@@ -10,22 +10,22 @@
 typedef struct {
     GapBuffer      gb;
     EditorMode     mode;
-    int            cursor_col;    // logical col
-    int            cursor_row;    // logical row
-    int            visual_start;  // buffer offset for visual mode
+    int            cursor_col;    // column the cursor is on
+    int            cursor_row;    // row the cursor is on
+    int            visual_start;  // where visual selection started
     SmoothedCursor smooth;
-    float          scroll_y;      // pixel scroll
+    float          scroll_y;      // how far we've scrolled (in pixels)
     char           filepath[512];
-    int            dirty;
-    int selection_start; // Start of the selection
-    int selection_end;   // End of the selection
-    int selecting;      // Flag to indicate if selection is active
-    int cursor_pos;      // buffer offset for cursor
-    int key_handled;     // suppress next char event after command key
-    int *line_offsets;   // logical start index of each line
+    int            dirty;         // set when buffer has unsaved changes
+    int selection_start; // start of the current selection
+    int selection_end;   // end of the current selection
+    int selecting;       // true while the user is dragging a selection
+    int cursor_pos;      // buffer offset for the cursor
+    int key_handled;     // set to skip the next char callback (for command keys)
+    int *line_offsets;   // cached start offset of each line
     int  line_count;
     int  line_cap;
-    int  lines_dirty;    // need to rebuild line_offsets
+    int  lines_dirty;    // set when line_offsets needs rebuilding
 } Editor;
 
 void editor_init(Editor *e);

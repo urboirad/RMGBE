@@ -21,10 +21,10 @@ typedef struct {
 
 void fp_init(FilePanel *fp);
 void fp_open_dir(FilePanel *fp, const char *path);
-/* returns path of selected file, or NULL if directory toggled */
+// Returns the clicked file path, or NULL if a directory was toggled open/closed.
 const char *fp_handle_click(FilePanel *fp, float mouse_y, float panel_y, float row_h);
 void fp_render(FilePanel *fp, float x, float y, float w, float h);
-/* call every frame, returns file path if user double-clicked a file */
+// Call every frame. Returns a file path if the user double-clicked a file.
 const char *fp_update(FilePanel *fp, float x, float y, float w, float h,
                       int mouse_clicked, float mouse_px, float mouse_py);
 
