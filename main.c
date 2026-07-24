@@ -282,7 +282,6 @@ int main(void) {
     editor_init(&g_editor);
     fp_init(&g_fp);
 
-    // Open current dir in sidebar by default
     char cwd[512];
 #ifdef _WIN32
     if (GetCurrentDirectoryA(sizeof(cwd), cwd))

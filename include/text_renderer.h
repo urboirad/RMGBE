@@ -9,4 +9,9 @@ float text_char_height(void);
 void  draw_rect(float x, float y, float w, float h, float r, float g, float b, float a);
 void  text_renderer_set_win_size(int w, int h);
 
+void  text_renderer_begin(void);
+void  batch_text(const char *text, float *x, float y, float r, float g, float b);
+void  batch_text_len(const char *text, int len, float *x, float y, float r, float g, float b);
+void  text_renderer_end(void);
+
 #endif

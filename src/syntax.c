@@ -243,17 +243,12 @@ void draw_text_highlighted(const char *line, float x, float y,
     Token tokens[512];
     int n = syntax_tokenize(line, tokens, 512, state);
 
+    text_renderer_begin();
     for (int i = 0; i < n; i++) {
         Token *t = &tokens[i];
         float cr, cg, cb;
         token_color(t->type, &cr, &cg, &cb);
-
-        char buf[512];
-        int len = t->len < 511 ? t->len : 511;
-        memcpy(buf, t->start, len);
-        buf[len] = '\0';
-
-        draw_text(buf, x, y, cr, cg, cb);
-        x += (float)len * text_char_width();
+        batch_text_len(t->start, t->len, &x, y, cr, cg, cb);
     }
+    text_renderer_end();
 }

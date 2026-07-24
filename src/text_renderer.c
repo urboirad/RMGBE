@@ -97,3 +97,51 @@ void draw_text(const char *text, float x, float y, float r, float g, float b) {
     pop_ortho();
     glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND);
 }
+
+void text_renderer_begin(void) {
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, g_texture);
+    set_ortho();
+    glBegin(GL_QUADS);
+}
+
+void batch_text(const char *text, float *x, float y, float r, float g, float b) {
+    glColor3f(r, g, b);
+    float cx = *x;
+    while (*text) {
+        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
+            stbtt_aligned_quad q;
+            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &y, &q, 1);
+            glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
+            glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
+            glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
+            glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+        }
+        ++text;
+    }
+    *x = cx;
+}
+
+void batch_text_len(const char *text, int len, float *x, float y, float r, float g, float b) {
+    glColor3f(r, g, b);
+    float cx = *x;
+    const char *end = text + len;
+    while (text < end) {
+        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
+            stbtt_aligned_quad q;
+            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &y, &q, 1);
+            glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
+            glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
+            glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
+            glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+        }
+        ++text;
+    }
+    *x = cx;
+}
+
+void text_renderer_end(void) {
+    glEnd();
+    pop_ortho();
+    glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND);
+}

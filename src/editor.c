@@ -18,10 +18,44 @@ void editor_init(Editor *e) {
     e->mode = MODE_NORMAL;
     e->smooth.vis_x = 0;
     e->smooth.vis_y = 0;
+    e->line_cap = 256;
+    e->line_offsets = malloc(e->line_cap * sizeof(int));
+    e->line_offsets[0] = 0;
+    e->line_count = 1;
+    e->lines_dirty = 1;
 }
 
 void editor_free(Editor *e) {
     if (e->gb.buffer) free(e->gb.buffer);
+    free(e->line_offsets);
+}
+
+static char gb_char_logical(GapBuffer *gb, int pos) {
+    int phys = pos < gb->gap_start ? pos : pos + (gb->gap_end - gb->gap_start);
+    if (phys < gb->total_size) return gb->buffer[phys];
+    return '\n';
+}
+
+static int gb_total_logical(GapBuffer *gb) {
+    return gb->gap_start + (gb->total_size - gb->gap_end);
+}
+
+static void editor_rebuild_lines(Editor *e) {
+    int n = gb_total_logical(&e->gb);
+    e->line_count = 0;
+    int start = 0;
+    while (start <= n) {
+        if (e->line_count >= e->line_cap) {
+            e->line_cap *= 2;
+            e->line_offsets = realloc(e->line_offsets, e->line_cap * sizeof(int));
+        }
+        e->line_offsets[e->line_count++] = start;
+        if (start == n) break;
+        while (start < n && gb_char_logical(&e->gb, start) != '\n')
+            start++;
+        start++; // skip the '\n'
+    }
+    e->lines_dirty = 0;
 }
 
 void editor_open_file(Editor *e, const char *path) {
@@ -34,6 +68,7 @@ void editor_open_file(Editor *e, const char *path) {
     init_buffer(&e->gb, 4096);
     e->cursor_col = e->cursor_row = 0;
     e->scroll_y = 0;
+    e->lines_dirty = 1;
 
     int c;
     while ((c = fgetc(f)) != EOF)
@@ -59,49 +94,33 @@ void editor_save_file(Editor *e) {
     e->dirty = 0;
 }
 
+static void editor_rebuild_lines(Editor *e);
+
 // Return buffer offset for (row, col)
 static int offset_of(Editor *e, int row, int col) {
-    GapBuffer *gb = &e->gb;
-    int r = 0, c = 0, pos = 0;
-    int total = gb->gap_start + (gb->total_size - gb->gap_end);
-    // iterate over logical chars
-    for (int i = 0; i < gb->gap_start + (gb->total_size - gb->gap_end); ) {
-        // map logical index to buffer index
-        int bi = (i < gb->gap_start) ? i : i + (gb->gap_end - gb->gap_start);
-        if (bi >= gb->total_size) break;
-        if (r == row && c == col) return i;
-        char ch = gb->buffer[bi];
-        if (ch == '\n') { r++; c = 0; } else { c++; }
-        i++;
-        pos = i;
-        (void)total;
-    }
+    if (e->lines_dirty) editor_rebuild_lines(e);
+    if (row < 0) row = 0;
+    if (row >= e->line_count) row = e->line_count - 1;
+    int pos = e->line_offsets[row] + col;
+    int n = gb_total_logical(&e->gb);
+    if (pos > n) pos = n;
     return pos;
 }
 
 static int logical_len_of_row(Editor *e, int row) {
-    GapBuffer *gb = &e->gb;
-    int r = 0, c = 0;
-    int n = gb->gap_start + (gb->total_size - gb->gap_end);
-    for (int i = 0; i < n; i++) {
-        int bi = (i < gb->gap_start) ? i : i + (gb->gap_end - gb->gap_start);
-        if (bi >= gb->total_size) break;
-        char ch = gb->buffer[bi];
-        if (r == row) { if (ch == '\n') return c; c++; }
-        else if (ch == '\n') { r++; c = 0; }
-    }
-    return (r == row) ? c : 0;
+    if (e->lines_dirty) editor_rebuild_lines(e);
+    if (row < 0 || row >= e->line_count) return 0;
+    int start = e->line_offsets[row];
+    int end = (row + 1 < e->line_count) ? e->line_offsets[row + 1] : gb_total_logical(&e->gb);
+    // Length is (end - start), minus 1 if the line ends with '\n'
+    int len = end - start;
+    if (len > 0 && gb_char_logical(&e->gb, end - 1) == '\n') len--;
+    return len;
 }
 
 static int count_rows(Editor *e) {
-    GapBuffer *gb = &e->gb;
-    int rows = 1;
-    int n = gb->gap_start + (gb->total_size - gb->gap_end);
-    for (int i = 0; i < n; i++) {
-        int bi = (i < gb->gap_start) ? i : i + (gb->gap_end - gb->gap_start);
-        if (bi < gb->total_size && gb->buffer[bi] == '\n') rows++;
-    }
-    return rows;
+    if (e->lines_dirty) editor_rebuild_lines(e);
+    return e->line_count;
 }
 
 #define EDITOR_CLIPBOARD_LEN 1024
@@ -156,6 +175,7 @@ void editor_paste(Editor *e) {
     e->smooth.vis_x = GUTTER_W(cw) + e->cursor_col * cw;
     e->smooth.vis_y = e->cursor_row * (ch + 2.0f);
     e->dirty = 1;
+    e->lines_dirty = 1;
 }
 
 // Convert pixel position (px,py) relative to window into a logical buffer offset.
@@ -223,7 +243,7 @@ void editor_key(Editor *e, int key, int mods) {
             int prev_row_len = 0;
             if (e->cursor_col == 0 && e->cursor_row > 0)
                 prev_row_len = logical_len_of_row(e, e->cursor_row - 1);
-            delete_char(&e->gb); e->dirty = 1;
+            delete_char(&e->gb); e->dirty = 1; e->lines_dirty = 1;
             if (e->cursor_col > 0) e->cursor_col--;
             else if (e->cursor_row > 0) {
                 e->cursor_row--;
@@ -232,7 +252,7 @@ void editor_key(Editor *e, int key, int mods) {
             return;
         }
         if (key == GLFW_KEY_ENTER) {
-            insert_char(&e->gb, '\n'); e->dirty = 1;
+            insert_char(&e->gb, '\n'); e->dirty = 1; e->lines_dirty = 1;
             e->cursor_row++; e->cursor_col = 0; return;
         }
         if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, cur-1); } return; }
@@ -310,13 +330,14 @@ void editor_key(Editor *e, int key, int mods) {
             if (gb->gap_start < n) {
                 gb->gap_end++;
                 e->dirty = 1;
+                e->lines_dirty = 1;
             }
             return;
         }
         if (key == GLFW_KEY_O) {
             int eol = offset_of(e, e->cursor_row, logical_len_of_row(e, e->cursor_row));
             move_cursor(&e->gb, eol);
-            insert_char(&e->gb, '\n'); e->dirty = 1;
+            insert_char(&e->gb, '\n'); e->dirty = 1; e->lines_dirty = 1;
             e->cursor_row++; e->cursor_col = 0;
             e->mode = MODE_INSERT;
             e->key_handled = 1;
@@ -336,6 +357,7 @@ void editor_char(Editor *e, unsigned int cp) {
     insert_char(&e->gb, (char)cp);
     e->cursor_col++;
     e->dirty = 1;
+    e->lines_dirty = 1;
 }
 
 void editor_update(Editor *e, float dt) {
@@ -374,54 +396,56 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
 
     // Render text line by line
     GapBuffer *gb = &e->gb;
-    int n = gb->gap_start + (gb->total_size - gb->gap_end);
+    int n = gb_total_logical(gb);
     char line[EDITOR_LINE_LEN];
-    int  llen = 0;
-    int  lrow = 0;
     float gutter = GUTTER_W(cw);
     float ty  = y - e->scroll_y;
 
     int sel_start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
     int sel_end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
-    int line_start_idx = 0;
     SyntaxState syntax_state = {0};
 
-    for (int i = 0; i <= n; i++) {
-        char c = '\n';
-        if (i < n) {
-            int bi = (i < gb->gap_start) ? i : i + (gb->gap_end - gb->gap_start);
-            if (bi < gb->total_size) c = gb->buffer[bi]; else c = '\n';
-        }
-        if (c == '\n' || i == n) {
-            line[llen] = '\0';
-            // Always tokenize to keep syntax state in sync (block comments)
-            Token dummy[1];
-            syntax_tokenize(line, dummy, 0, &syntax_state);
+    if (e->lines_dirty) editor_rebuild_lines(e);
 
-            if (ty + row >= y && ty < y + h) {
-                // Draw selection highlight for this line
-                if (sel_start != sel_end) {
-                    int hl_s = sel_start - line_start_idx;
-                    int hl_e = sel_end   - line_start_idx;
-                    if (hl_s < llen && hl_e > 0) {
-                        if (hl_s < 0) hl_s = 0;
-                        if (hl_e > llen) hl_e = llen;
-                        draw_rect(x + gutter + hl_s * cw, ty + (row - ch) * 0.5f,
-                                  (hl_e - hl_s) * cw, ch,
-                                  0, 188/255.0f, 212/255.0f, 0.3f);
-                    }
-                }
-                // Re-tokenize for actual drawing (state is already correct)
-                draw_text_highlighted(line, x + gutter, ty + ch * 0.85f, &syntax_state);
-                char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", lrow + 1);
-                draw_text(lnum, x + 4, ty + ch * 0.85f, COLOR_TEXT);
-            }
-            line_start_idx = i + 1;
-            llen = 0; lrow++; ty += row;
-            if (ty > y + h) break;
-        } else {
+    for (int li = 0; li < e->line_count; li++) {
+        int lstart = e->line_offsets[li];
+        int lend = (li + 1 < e->line_count) ? e->line_offsets[li + 1] : n;
+        // lend points to the '\n' or one past end; line text is [lstart, lend)
+        int llen = 0;
+        for (int k = lstart; k < lend && k < n; k++) {
+            char c = gb_char_logical(gb, k);
+            if (c == '\n') break;
             if (llen < EDITOR_LINE_LEN - 1) line[llen++] = c;
         }
+        line[llen] = '\0';
+
+        if (ty + row >= y && ty < y + h) {
+            // Draw selection highlight for this line
+            if (sel_start != sel_end) {
+                int hl_s = sel_start - lstart;
+                int hl_e = sel_end   - lstart;
+                if (hl_s < llen && hl_e > 0) {
+                    if (hl_s < 0) hl_s = 0;
+                    if (hl_e > llen) hl_e = llen;
+                    draw_rect(x + gutter + hl_s * cw, ty + (row - ch) * 0.5f,
+                              (hl_e - hl_s) * cw, ch,
+                              0, 188/255.0f, 212/255.0f, 0.3f);
+                }
+            }
+            draw_text_highlighted(line, x + gutter, ty + ch * 0.85f, &syntax_state);
+            char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", li + 1);
+            draw_text(lnum, x + 4, ty + ch * 0.85f, COLOR_TEXT);
+        } else if (ty >= y + h) {
+            // Past visible area — still need to advance syntax state
+            // for correct block comment tracking if we render again
+            // (but we can break since we won't be below-visible again this frame)
+            break;
+        } else {
+            // Above visible area: advance syntax state for block comments
+            Token dummy[1];
+            syntax_tokenize(line, dummy, 0, &syntax_state);
+        }
+        ty += row;
     }
 
     // Status bar
