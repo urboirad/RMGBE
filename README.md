@@ -56,3 +56,7 @@ The executable will be in `build-release/` (or `build-debug/`).
 | `Ctrl+Tab` | Switch focus between editor and terminal | — |
 
 Scroll wheel scrolls the editor. Click files in the sidebar to open them.
+
+## License
+
+This project is open source under a custom non-commercial license. You can use, study, and modify the code, but you **cannot sell** the software or release forks without crediting the original project. See [LICENSE](LICENSE) for full details.
