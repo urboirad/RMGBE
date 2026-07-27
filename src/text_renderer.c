@@ -6,6 +6,7 @@
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
+#include "font_data.h"
 
 #define ATLAS_W    512
 #define ATLAS_H    512
@@ -31,6 +32,24 @@ void text_renderer_init(const char *font_path, float font_size) {
     free(ttf);
 
     // Measure 'M' for monospace cell size
+    float cx = 0, cy = 0;
+    stbtt_aligned_quad q;
+    stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, 'M' - FIRST_CHAR, &cx, &cy, &q, 1);
+    g_char_w = cx;
+    g_char_h = font_size;
+
+    glGenTextures(1, &g_texture);
+    glBindTexture(GL_TEXTURE_2D, g_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_W, ATLAS_H, 0, GL_ALPHA, GL_UNSIGNED_BYTE, bitmap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    free(bitmap);
+}
+
+void text_renderer_init_embedded(float font_size) {
+    unsigned char *bitmap = calloc(ATLAS_W * ATLAS_H, 1);
+    stbtt_BakeFontBitmap(embedded_font, 0, font_size, bitmap, ATLAS_W, ATLAS_H, FIRST_CHAR, NUM_CHARS, g_chars);
+
     float cx = 0, cy = 0;
     stbtt_aligned_quad q;
     stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, 'M' - FIRST_CHAR, &cx, &cy, &q, 1);

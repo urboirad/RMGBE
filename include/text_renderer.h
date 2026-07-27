@@ -2,6 +2,7 @@
 #define TEXT_RENDERER_H
 
 void  text_renderer_init(const char *font_path, float font_size);
+void  text_renderer_init_embedded(float font_size);
 void  text_renderer_free(void);
 void  draw_text(const char *text, float x, float y, float r, float g, float b);
 float text_char_width(void);

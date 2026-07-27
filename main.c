@@ -358,11 +358,7 @@ int main(void) {
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
-    char font_path[1024];
-    char exe_dir[512];
-    get_exe_dir(exe_dir, sizeof(exe_dir));
-    snprintf(font_path, sizeof(font_path), "%s/../assets/FiraCode-Regular.ttf", exe_dir);
-    text_renderer_init(font_path, 16.0f);
+    text_renderer_init_embedded(16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);
 
     editor_init(&g_editor);
@@ -370,6 +366,8 @@ int main(void) {
 
     // Clean up previous update backup
     {
+        char exe_dir[512];
+        get_exe_dir(exe_dir, sizeof(exe_dir));
         char old_path[1024];
         snprintf(old_path, sizeof(old_path), "%s\\RMGBE_old.exe", exe_dir);
         remove(old_path);
