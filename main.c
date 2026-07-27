@@ -19,6 +19,7 @@
 #include "file_panel.h"
 #include "terminal.h"
 #include "editor.h"
+#include "update.h"
 
 // ---- Globals ----------------------------------------------------------------
 static Editor    g_editor;
@@ -35,6 +36,8 @@ static float g_editor_x, g_editor_y;
 // Popups
 static int g_about_open = 0;
 static int g_theme_open = 0;
+static int g_update_open = 0;
+static UpdateState g_update;
 
 static void get_exe_dir(char *buf, int len) {
 #ifdef _WIN32
@@ -162,6 +165,30 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         return;
     }
+    if (g_update_open) {
+        float pw = 400.0f, ph = 200.0f;
+        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+        // Close button
+        if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
+            g_update_open = 0; return;
+        }
+        // Download button (only when update is available)
+        if (g_update.status == UPDATE_AVAILABLE) {
+            float bx = px + pw * 0.5f - 60.0f, by = py + ph - 68.0f;
+            if (mx >= bx && mx <= bx + 120 && my >= by && my <= by + 28) {
+                char exe_path[1024];
+                get_exe_dir(exe_path, sizeof(exe_path));
+                // get_exe_dir returns the exe dir, we need the exe path itself
+                // For update, we use the directory to place the new exe
+                update_download_start(&g_update, exe_path);
+                return;
+            }
+        }
+        if (mx < px || mx > px + pw || my < py || my > py + ph) {
+            g_update_open = 0; return;
+        }
+        return;
+    }
 
     // Toolbar area
     if (my < toolbar_h) {
@@ -181,6 +208,10 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             g_theme_open = 1;
         if (mx >= 408 && mx <= 468)
             g_about_open = 1;
+        if (mx >= 450 && mx <= 560) {
+            g_update_open = 1;
+            update_check_start(&g_update);
+        }
         return;
     }
 
@@ -220,8 +251,9 @@ static void draw_toolbar(float w) {
         {232, 60.0f,  "Save"},
         {300, 70.0f, "Theme"},
         {380, 60.0f,  "About"},
+        {450, 110.0f, "Check for Updates"},
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
         draw_text(btns[i].label, btns[i].x + 8, 20.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -264,6 +296,59 @@ static void draw_theme_editor(void) {
     draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
 }
 
+static void draw_update_popup(void) {
+    if (!g_update_open) return;
+    float cw = (float)g_win_w, ch = (float)g_win_h;
+    float pw = 400.0f, ph = 200.0f;
+    float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
+
+    draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
+    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
+    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+
+    draw_text("Check for Updates", px + 16, py + 28.0f, COLOR_TEXT);
+
+    char msg[512];
+    switch (g_update.status) {
+        case UPDATE_CHECKING:
+            draw_text("Checking for updates...", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
+            break;
+        case UPDATE_AVAILABLE:
+            snprintf(msg, sizeof(msg), "New version available: %s", g_update.latest_version);
+            draw_text(msg, px + 16, py + 60.0f, 1.0f, 0.8f, 0.3f);
+            draw_text("Click Download to update.", px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
+            // Download button
+            draw_rect(px + pw * 0.5f - 60.0f, py + ph - 68.0f, 120.0f, 28.0f, COLOR_BUTTON, 0.5f);
+            draw_text("Download", px + pw * 0.5f - 40.0f, py + ph - 50.0f, 1.0f, 1.0f, 1.0f);
+            break;
+        case UPDATE_UPTODATE:
+            snprintf(msg, sizeof(msg), "You're up to date! (v%s)", UPDATE_CURRENT_VERSION);
+            draw_text(msg, px + 16, py + 60.0f, 0.4f, 0.9f, 0.5f);
+            break;
+        case UPDATE_DOWNLOADING:
+            draw_text("Downloading update...", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
+            // Progress bar
+            draw_rect(px + 16, py + 90.0f, pw - 32.0f, 12.0f, 0.2f, 0.2f, 0.2f, 1.0f);
+            draw_rect(px + 16, py + 90.0f, (pw - 32.0f) * g_update.progress, 12.0f, 0.3f, 0.7f, 0.4f, 1.0f);
+            break;
+        case UPDATE_READY:
+            draw_text("Update downloaded!", px + 16, py + 60.0f, 0.4f, 0.9f, 0.5f);
+            draw_text("Restart RMGBE to apply the update.", px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
+            break;
+        case UPDATE_FAILED:
+            snprintf(msg, sizeof(msg), "Update check failed: %s", g_update.error_msg);
+            draw_text("Update failed:", px + 16, py + 60.0f, 0.9f, 0.3f, 0.3f);
+            draw_text(g_update.error_msg, px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
+            break;
+        default:
+            draw_text("Click Check for Updates to start.", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
+            break;
+    }
+
+    draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
+}
+
 // ---- Main -------------------------------------------------------------------
 int main(void) {
     if (!glfwInit()) return -1;
@@ -282,6 +367,13 @@ int main(void) {
 
     editor_init(&g_editor);
     fp_init(&g_fp);
+
+    // Clean up previous update backup
+    {
+        char old_path[1024];
+        snprintf(old_path, sizeof(old_path), "%s\\RMGBE_old.exe", exe_dir);
+        remove(old_path);
+    }
 
     char cwd[512];
 #ifdef _WIN32
@@ -341,6 +433,7 @@ int main(void) {
 
         draw_about();
         draw_theme_editor();
+        draw_update_popup();
 
         glfwSwapBuffers(win);
         glfwPollEvents();

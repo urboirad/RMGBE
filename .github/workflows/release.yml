@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+
+      - name: Build
+        run: |
+          gcc -Os -DNDEBUG -ffunction-sections -fdata-sections \
+            -fno-unwind-tables -fno-asynchronous-unwind-tables \
+            -Iinclude -Ivendor \
+            main.c src/gap_buffer.c src/text_renderer.c src/editor.c \
+            src/file_panel.c src/terminal.c src/syntax.c src/update.c \
+            -o RMGBE.exe -s -Wl,--gc-sections \
+            -Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lm
+
+      - name: Get version
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RMGBE.exe
+          generate_release_notes: true
