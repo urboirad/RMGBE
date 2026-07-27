@@ -6,38 +6,27 @@ Features syntax highlighting for C/C++, a built-in terminal, file browser sideba
 
 ## Building
 
+**Windows:**
+Requires [MinGW](https://www.mingw-w64.org/) with GCC. GLFW is included in `lib/`.
+```sh
+build.bat release    # optimized (~869 KB)
+build.bat debug      # with debug symbols
+```
+Output: `output/RMGBE.exe`
+
+**Linux / macOS:**
 Requires [CMake](https://cmake.org/) 3.15+ and [GLFW](https://www.glfw.org/).
-
-**Linux:**
 ```sh
+# Linux
 sudo apt install libglfw3-dev cmake
-```
 
-**macOS:**
-```sh
+# macOS
 brew install glfw cmake
+
+# Build
+make release    # or: make debug
 ```
-
-**Windows:** GLFW is included as a static library in `lib/`, no extra dependencies needed.
-
-### Build commands
-
-```sh
-# Release build (optimized, ~869 KB)
-make release
-
-# Debug build (with debug symbols)
-make debug
-```
-
-Or directly with CMake:
-```sh
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make
-```
-
-The executable will be in `build-release/` (or `build-debug/`).
+Output: `build-release/RMGBE`
 
 ## Controls
 
