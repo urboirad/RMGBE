@@ -10,16 +10,30 @@ set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-s -Wl,--gc-sections")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-unwind-tables -fno-asynchronous-unwind-tables")
 
-add_executable(RMGBE
-    main.c
-    src/gap_buffer.c
-    src/text_renderer.c
-    src/editor.c
-    src/file_panel.c
-    src/terminal.c
-    src/syntax.c
-    src/update.c
-)
+if(WIN32)
+    add_executable(RMGBE
+        main.c
+        src/gap_buffer.c
+        src/text_renderer.c
+        src/editor.c
+        src/file_panel.c
+        src/terminal.c
+        src/syntax.c
+        src/update.c
+        src/resources.rc
+    )
+else()
+    add_executable(RMGBE
+        main.c
+        src/gap_buffer.c
+        src/text_renderer.c
+        src/editor.c
+        src/file_panel.c
+        src/terminal.c
+        src/syntax.c
+        src/update.c
+    )
+endif()
 
 target_include_directories(RMGBE PRIVATE include vendor)
 

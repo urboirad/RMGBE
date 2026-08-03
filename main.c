@@ -10,6 +10,10 @@
 #endif
 
 #include "GLFW/glfw3.h"
+#ifdef _WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
+#include "GLFW/glfw3native.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -251,7 +255,7 @@ static void draw_toolbar(float w) {
         {232, 60.0f,  "Save"},
         {300, 70.0f, "Theme"},
         {380, 60.0f,  "About"},
-        {450, 110.0f, "Check for Updates"},
+        {450, 150.0f, "Check for Updates"},
     };
     for (int i = 0; i < 6; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
@@ -271,7 +275,7 @@ static void draw_about(void) {
     draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
 
     draw_text("Rick's Minimal Gap Buffer Editor", px + 16, py + 28.0f, COLOR_TEXT);
-    draw_text("Version 0.1.0", px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
+    draw_text("Version " UPDATE_CURRENT_VERSION, px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
     draw_text("---", px + 16, py + 76.0f, 0.7f, 0.7f, 0.7f);
     draw_text("no-ad technologies", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
 
@@ -353,10 +357,20 @@ static void draw_update_popup(void) {
 int main(void) {
     if (!glfwInit()) return -1;
 
-    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE", NULL, NULL);
+    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE " UPDATE_CURRENT_VERSION, NULL, NULL);
     if (!win) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
+
+#ifdef _WIN32
+    // Set window icon from embedded resource
+    SendMessage(glfwGetWin32Window(win), WM_SETICON, ICON_BIG,
+                (LPARAM)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(1),
+                                  IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
+    SendMessage(glfwGetWin32Window(win), WM_SETICON, ICON_SMALL,
+                (LPARAM)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(1),
+                                  IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
+#endif
 
     text_renderer_init_embedded(16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);

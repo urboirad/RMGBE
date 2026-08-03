@@ -1,7 +1,7 @@
 #ifndef UPDATE_H
 #define UPDATE_H
 
-#define UPDATE_CURRENT_VERSION "0.1.0"
+#define UPDATE_CURRENT_VERSION "0.1.4"
 #define UPDATE_REPO "urboirad/RMGBE"
 
 typedef enum {
