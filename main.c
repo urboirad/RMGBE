@@ -277,7 +277,7 @@ static void draw_about(void) {
     draw_text("Rick's Minimal Gap Buffer Editor", px + 16, py + 28.0f, COLOR_TEXT);
     draw_text("Version " UPDATE_CURRENT_VERSION, px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
     draw_text("---", px + 16, py + 76.0f, 0.7f, 0.7f, 0.7f);
-    draw_text("no-ad technologies", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
+    draw_text("urboirad", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
 
     draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
     draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
