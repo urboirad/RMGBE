@@ -1,6 +1,6 @@
 # RMGBE
 
-Rick's Minimal Gap Buffer Editor — a lightweight text editor built from scratch in C and OpenGL.
+Rick's Minimal Gap Buffer Editor - a lightweight text editor built from scratch in C and OpenGL.
 
 Features syntax highlighting for C/C++, a built-in terminal, file browser sidebar, smooth cursor movement, and vim-style keybindings (H/J/K/L). Runs on Windows, macOS, and Linux.
 
