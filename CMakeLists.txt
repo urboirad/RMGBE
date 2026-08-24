@@ -19,7 +19,7 @@ if(WIN32)
         src/file_panel.c
         src/terminal.c
         src/syntax.c
-        src/update.c
+        src/theme.c
         src/resources.rc
     )
 else()
@@ -31,7 +31,7 @@ else()
         src/file_panel.c
         src/terminal.c
         src/syntax.c
-        src/update.c
+        src/theme.c
     )
 endif()
 

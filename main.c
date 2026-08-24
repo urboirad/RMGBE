@@ -23,7 +23,8 @@
 #include "file_panel.h"
 #include "terminal.h"
 #include "editor.h"
-#include "update.h"
+#include "version.h"
+#include "theme.h"
 
 // ---- Globals ----------------------------------------------------------------
 static Editor    g_editor;
@@ -40,8 +41,19 @@ static float g_editor_x, g_editor_y;
 // Popups
 static int g_about_open = 0;
 static int g_theme_open = 0;
-static int g_update_open = 0;
-static UpdateState g_update;
+
+// Theme editor state
+static int    g_theme_sel      = -1;   // selected color entry index, -1 = none
+static int    g_theme_input_on = 0;    // text input focused
+static char   g_theme_input[64];       // edit buffer ("#RRGGBB" or "R,G,B")
+static int    g_theme_cursor;          // caret position in buffer
+static char   g_theme_msg[128] = "";   // status message (load/save errors etc.)
+
+// Theme modal layout (shared between draw + hit-testing)
+#define THEME_PW     580.0f
+#define THEME_PH     620.0f
+#define THEME_LIST_Y  48.0f   // list top, relative to modal top
+#define THEME_ROW_H   28.0f
 
 static void get_exe_dir(char *buf, int len) {
 #ifdef _WIN32
@@ -88,6 +100,23 @@ static int open_file_dialog(char *out, int out_len) {
     out[0] = '\0';
     return GetOpenFileNameA(&ofn);
 }
+
+static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
+    OPENFILENAMEA ofn = {0};
+    char buf[1024];
+    strncpy(buf, out, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile   = buf;
+    ofn.nMaxFile    = sizeof(buf);
+    ofn.lpstrFilter = filter;
+    ofn.lpstrDefExt = def_ext;
+    ofn.Flags       = OFN_OVERWRITEPROMPT;
+    if (!GetSaveFileNameA(&ofn)) return 0;
+    strncpy(out, buf, out_len - 1);
+    out[out_len - 1] = '\0';
+    return 1;
+}
 #else
 static int open_folder_dialog(char *out, int out_len) {
     (void)out_len;
@@ -101,12 +130,58 @@ static int open_file_dialog(char *out, int out_len) {
     out[0] = '\0';
     return 0;
 }
+
+static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
+    (void)out_len; (void)filter; (void)def_ext;
+    out[0] = '\0';
+    return 0;
+}
 #endif
 
 // ---- Callbacks --------------------------------------------------------------
 static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods) {
     (void)win; (void)scancode;
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+        // Theme editor input capture
+        if (g_theme_open) {
+            if (g_theme_input_on) {
+                int len = (int)strlen(g_theme_input);
+                if (key == GLFW_KEY_ESCAPE) { g_theme_input_on = 0; return; }
+                if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+                    // Apply color
+                    if (g_theme_sel >= 0) {
+                        ThemeColor c;
+                        if (theme_parse_color(g_theme_input, &c)) {
+                            *theme_entry_by_index(g_theme_sel).color = c;
+                            g_theme_msg[0] = '\0';
+                        } else {
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "Bad color value");
+                        }
+                    }
+                    g_theme_input_on = 0;
+                    return;
+                }
+                if (key == GLFW_KEY_BACKSPACE && g_theme_cursor > 0) {
+                    memmove(g_theme_input + g_theme_cursor - 1,
+                            g_theme_input + g_theme_cursor,
+                            len - g_theme_cursor + 1);
+                    g_theme_cursor--;
+                    return;
+                }
+                if (key == GLFW_KEY_DELETE && g_theme_cursor < len) {
+                    memmove(g_theme_input + g_theme_cursor,
+                            g_theme_input + g_theme_cursor + 1,
+                            len - g_theme_cursor);
+                    return;
+                }
+                if (key == GLFW_KEY_LEFT  && g_theme_cursor > 0)     { g_theme_cursor--; return; }
+                if (key == GLFW_KEY_RIGHT && g_theme_cursor < len)   { g_theme_cursor++; return; }
+                if (key == GLFW_KEY_HOME) { g_theme_cursor = 0;   return; }
+                if (key == GLFW_KEY_END)  { g_theme_cursor = len; return; }
+            }
+            return; // swallow all other keys while modal is open
+        }
+
         // Tab switches focus between editor and terminal
         if (key == GLFW_KEY_TAB && (mods & GLFW_MOD_CONTROL)) {
             g_focus ^= 1; return;
@@ -118,6 +193,19 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
 
 static void cb_char(GLFWwindow *win, unsigned int cp) {
     (void)win;
+    if (g_theme_open) {
+        if (g_theme_input_on && cp >= 32 && cp < 127) {
+            int len = (int)strlen(g_theme_input);
+            if (len < (int)sizeof(g_theme_input) - 1 && g_theme_cursor <= len) {
+                memmove(g_theme_input + g_theme_cursor + 1,
+                        g_theme_input + g_theme_cursor,
+                        len - g_theme_cursor + 1);
+                g_theme_input[g_theme_cursor++] = (char)cp;
+                g_theme_input[len + 1] = '\0';
+            }
+        }
+        return;
+    }
     if (g_focus == 0) editor_char(&g_editor, cp);
     else              term_char_input(&g_term, cp);
 }
@@ -146,7 +234,6 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         return;
     }
 
-    // Close popups when clicking outside them or on their close button
     if (g_about_open) {
         float pw = 340.0f, ph = 160.0f;
         float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
@@ -159,38 +246,97 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         return;
     }
     if (g_theme_open) {
-        float pw = 360.0f, ph = 240.0f;
+        float pw = THEME_PW, ph = THEME_PH;
         float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
-        if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
-            g_theme_open = 0; return;
-        }
-        if (mx < px || mx > px + pw || my < py || my > py + ph) {
-            g_theme_open = 0; return;
-        }
-        return;
-    }
-    if (g_update_open) {
-        float pw = 400.0f, ph = 200.0f;
-        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+
         // Close button
-        if (mx >= px + pw - 70 && mx <= px + pw - 14 && my >= py + ph - 32 && my <= py + ph - 8) {
-            g_update_open = 0; return;
+        if (mx >= px + pw - 74 && mx <= px + pw - 16 && my >= py + ph - 38 && my <= py + ph - 10) {
+            g_theme_open = 0; return;
         }
-        // Download button (only when update is available)
-        if (g_update.status == UPDATE_AVAILABLE) {
-            float bx = px + pw * 0.5f - 60.0f, by = py + ph - 68.0f;
-            if (mx >= bx && mx <= bx + 120 && my >= by && my <= by + 28) {
-                char exe_path[1024];
-                get_exe_dir(exe_path, sizeof(exe_path));
-                // get_exe_dir returns the exe dir, we need the exe path itself
-                // For update, we use the directory to place the new exe
-                update_download_start(&g_update, exe_path);
+
+        // Color list rows
+        float list_y = py + THEME_LIST_Y;
+        float row_h = THEME_ROW_H;
+        int count = theme_entry_count();
+        for (int i = 0; i < count; i++) {
+            float ry = list_y + i * row_h;
+            if (my >= ry && my < ry + row_h && mx >= px + 8 && mx <= px + pw - 8) {
+                g_theme_sel = i;
+                ThemeEntry e = theme_entry_by_index(i);
+                theme_color_to_hex(e.color, g_theme_input, sizeof(g_theme_input));
+                g_theme_cursor = (int)strlen(g_theme_input);
+                g_theme_input_on = 1;
                 return;
             }
         }
-        if (mx < px || mx > px + pw || my < py || my > py + ph) {
-            g_update_open = 0; return;
+
+        // Input box
+        float ib_x = px + 100.0f, ib_y = py + ph - 140.0f, ib_w = 180.0f, ib_h = 26.0f;
+        if (mx >= ib_x && mx <= ib_x + ib_w && my >= ib_y && my <= ib_y + ib_h) {
+            g_theme_input_on = 1;
+            // place caret near click
+            float cwch = text_char_width();
+            int off = (int)((mx - ib_x - 6.0f) / cwch);
+            int len = (int)strlen(g_theme_input);
+            if (off < 0) off = 0;
+            if (off > len) off = len;
+            g_theme_cursor = off;
+            return;
         }
+
+        // Gradient cycle button
+        float gr_x = px + 320.0f, gr_y = py + ph - 140.0f, gr_w = 160.0f;
+        if (mx >= gr_x && mx <= gr_x + gr_w && my >= gr_y && my <= gr_y + 26.0f) {
+            g_theme.bg_gradient = (g_theme.bg_gradient + 1) % 3;
+            return;
+        }
+
+        // Bottom-left buttons
+        float btn_y = py + ph - 78.0f;
+        struct { float x; float w; const char *label; } b[] = {
+            { px + 20.0f,   72.0f, "Load..." },
+            { px + 104.0f,  92.0f, "Save As..." },
+            { px + 208.0f,  64.0f, "Reset" },
+        };
+        for (int i = 0; i < 3; i++) {
+            if (mx >= b[i].x && mx <= b[i].x + b[i].w && my >= btn_y && my <= btn_y + 24.0f) {
+                if (i == 0) {
+                    char path[1024] = "";
+                    if (open_file_dialog(path, sizeof(path))) {
+                        char err[256];
+                        if (!theme_load_file(path, err, sizeof(err)))
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
+                        else {
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "Loaded %s", g_theme.name);
+                            g_theme_sel = -1; g_theme_input_on = 0;
+                        }
+                    }
+                } else if (i == 1) {
+                    char path[1024];
+                    snprintf(path, sizeof(path), "%.60s.rmgtheme", g_theme.name);
+                    if (save_file_dialog(path, sizeof(path),
+                                         "RMGBE Themes (*.rmgtheme)\0*.rmgtheme\0All Files (*.*)\0*.*\0",
+                                         "rmgtheme")) {
+                        char err[256];
+                        if (!theme_save_file(path, err, sizeof(err)))
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
+                        else
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "Saved");
+                    }
+                } else {
+                    theme_reset();
+                    snprintf(g_theme_msg, sizeof(g_theme_msg), "Defaults restored");
+                    g_theme_sel = -1; g_theme_input_on = 0;
+                }
+                return;
+            }
+        }
+
+        if (mx < px || mx > px + pw || my < py || my > py + ph) {
+            g_theme_open = 0; return;
+        }
+        // Click inside modal but not on a widget: unfocus the input
+        g_theme_input_on = 0;
         return;
     }
 
@@ -212,10 +358,6 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             g_theme_open = 1;
         if (mx >= 408 && mx <= 468)
             g_about_open = 1;
-        if (mx >= 450 && mx <= 560) {
-            g_update_open = 1;
-            update_check_start(&g_update);
-        }
         return;
     }
 
@@ -247,7 +389,7 @@ static void cb_scroll(GLFWwindow *win, double xoff, double yoff) {
 
 // ---- Toolbar ----------------------------------------------------------------
 static void draw_toolbar(float w) {
-    draw_rect(0, 0, w, 32.0f, COLOR_TOOLBAR);
+    draw_rect(0, 0, w, 32.0f, COLOR_TOOLBAR, 1.0f);
 
     struct { float x; float bw; const char *label; } btns[] = {
         {8,   112.0f, "Open Folder"},
@@ -255,9 +397,8 @@ static void draw_toolbar(float w) {
         {232, 60.0f,  "Save"},
         {300, 70.0f, "Theme"},
         {380, 60.0f,  "About"},
-        {450, 150.0f, "Check for Updates"},
     };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 5; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
         draw_text(btns[i].label, btns[i].x + 8, 20.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -275,7 +416,7 @@ static void draw_about(void) {
     draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
 
     draw_text("Rick's Minimal Gap Buffer Editor", px + 16, py + 28.0f, COLOR_TEXT);
-    draw_text("Version " UPDATE_CURRENT_VERSION, px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
+    draw_text("Version " RMGBE_VERSION, px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
     draw_text("---", px + 16, py + 76.0f, 0.7f, 0.7f, 0.7f);
     draw_text("urboirad", px + 16, py + 98.0f, 0.7f, 0.7f, 0.7f);
 
@@ -286,7 +427,7 @@ static void draw_about(void) {
 static void draw_theme_editor(void) {
     if (!g_theme_open) return;
     float cw = (float)g_win_w, ch = (float)g_win_h;
-    float pw = 360.0f, ph = 240.0f;
+    float pw = THEME_PW, ph = THEME_PH;
     float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
 
     draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
@@ -294,76 +435,96 @@ static void draw_theme_editor(void) {
     draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
 
     draw_text("Theme Editor", px + 16, py + 28.0f, COLOR_TEXT);
-    draw_text("Coming soon...", px + 16, py + 60.0f, 0.6f, 0.6f, 0.6f);
 
-    draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
-    draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
-}
+    // ---- Color list ----
+    float list_y = py + THEME_LIST_Y;
+    float row_h = THEME_ROW_H;
+    int count = theme_entry_count();
+    float chw = text_char_width();
+    for (int i = 0; i < count; i++) {
+        float ry = list_y + i * row_h;
 
-static void draw_update_popup(void) {
-    if (!g_update_open) return;
-    float cw = (float)g_win_w, ch = (float)g_win_h;
-    float pw = 400.0f, ph = 200.0f;
-    float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
+        // Row background: highlight selected
+        if (i == g_theme_sel)
+            draw_rect(px + 8, ry, pw - 16, row_h, COLOR_BUTTON, 0.25f);
 
-    draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
-    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
-    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+        ThemeEntry e = theme_entry_by_index(i);
 
-    draw_text("Check for Updates", px + 16, py + 28.0f, COLOR_TEXT);
+        // Swatch
+        draw_rect(px + 14, ry + 5.0f, 34.0f, row_h - 10.0f,
+                  e.color->r, e.color->g, e.color->b, 1.0f);
+        draw_rect(px + 14, ry + 5.0f, 34.0f, 1.0f, 1, 1, 1, 0.35f);
+        draw_rect(px + 14, ry + row_h - 6.0f, 34.0f, 1.0f, 1, 1, 1, 0.35f);
 
-    char msg[512];
-    switch (g_update.status) {
-        case UPDATE_CHECKING:
-            draw_text("Checking for updates...", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
-            break;
-        case UPDATE_AVAILABLE:
-            snprintf(msg, sizeof(msg), "New version available: %s", g_update.latest_version);
-            draw_text(msg, px + 16, py + 60.0f, 1.0f, 0.8f, 0.3f);
-            draw_text("Click Download to update.", px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
-            // Download button
-            draw_rect(px + pw * 0.5f - 60.0f, py + ph - 68.0f, 120.0f, 28.0f, COLOR_BUTTON, 0.5f);
-            draw_text("Download", px + pw * 0.5f - 40.0f, py + ph - 50.0f, 1.0f, 1.0f, 1.0f);
-            break;
-        case UPDATE_UPTODATE:
-            snprintf(msg, sizeof(msg), "You're up to date! (v%s)", UPDATE_CURRENT_VERSION);
-            draw_text(msg, px + 16, py + 60.0f, 0.4f, 0.9f, 0.5f);
-            break;
-        case UPDATE_DOWNLOADING:
-            draw_text("Downloading update...", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
-            // Progress bar
-            draw_rect(px + 16, py + 90.0f, pw - 32.0f, 12.0f, 0.2f, 0.2f, 0.2f, 1.0f);
-            draw_rect(px + 16, py + 90.0f, (pw - 32.0f) * g_update.progress, 12.0f, 0.3f, 0.7f, 0.4f, 1.0f);
-            break;
-        case UPDATE_READY:
-            draw_text("Update downloaded!", px + 16, py + 60.0f, 0.4f, 0.9f, 0.5f);
-            draw_text("Restart RMGBE to apply the update.", px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
-            break;
-        case UPDATE_FAILED:
-            snprintf(msg, sizeof(msg), "Update check failed: %s", g_update.error_msg);
-            draw_text("Update failed:", px + 16, py + 60.0f, 0.9f, 0.3f, 0.3f);
-            draw_text(g_update.error_msg, px + 16, py + 84.0f, 0.7f, 0.7f, 0.7f);
-            break;
-        default:
-            draw_text("Click Check for Updates to start.", px + 16, py + 60.0f, 0.7f, 0.7f, 0.7f);
-            break;
+        // Label
+        draw_text(e.label, px + 58.0f, ry + row_h * 0.75f, COLOR_TEXT);
+
+        // Hex value (dimmed)
+        char hex[16];
+        theme_color_to_hex(e.color, hex, sizeof(hex));
+        draw_text(hex, px + 280.0f, ry + row_h * 0.75f, 0.65f, 0.65f, 0.65f);
     }
 
-    draw_rect(px + pw - 70, py + ph - 32, 56.0f, 24.0f, COLOR_BUTTON, 0.5f);
-    draw_text("Close", px + pw - 58, py + ph - 14.0f, 1.0f, 1.0f, 1.0f);
+    // ---- Edit row ----
+    float ib_x = px + 100.0f, ib_y = py + ph - 140.0f, ib_w = 180.0f, ib_h = 26.0f;
+    draw_text("Value:", px + 20.0f, ib_y + 18.0f, COLOR_TEXT);
+    draw_rect(ib_x, ib_y, ib_w, ib_h, 0, 0, 0, 0.6f);
+    draw_rect(ib_x, ib_y, ib_w, 1.0f, g_theme_input_on ? 0.9f : 0.35f,
+              g_theme_input_on ? 0.9f : 0.35f, g_theme_input_on ? 0.9f : 0.4f, 1.0f);
+    draw_rect(ib_x, ib_y + ib_h - 1.0f, ib_w, 1.0f, 0.35f, 0.35f, 0.4f, 1.0f);
+
+    // Input text with caret
+    {
+        float tx = ib_x + 6.0f;
+        draw_text(g_theme_input, tx, ib_y + 18.0f, COLOR_TEXT);
+        if (g_theme_input_on && ((int)(glfwGetTime() * 2.0) & 1)) {
+            int before = g_theme_cursor;
+            float cx = tx + before * chw;
+            draw_rect(cx, ib_y + 4.0f, 1.5f, ib_h - 8.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
+        }
+    }
+
+    // Gradient cycle button
+    const char *gl = g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "Gradient: Vertical" :
+                     g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "Gradient: Horizontal" : "Gradient: None";
+    draw_rect(px + 320.0f, py + ph - 140.0f, 160.0f, 26.0f, COLOR_BUTTON, 0.5f);
+    draw_text(gl, px + 332.0f, py + ph - 122.0f, COLOR_TEXT);
+
+    // Hint / message line
+    if (g_theme_msg[0])
+        draw_text(g_theme_msg, px + 20.0f, py + ph - 102.0f, 0.8f, 0.8f, 0.5f);
+    else if (g_theme_sel >= 0)
+        draw_text("Type #RRGGBB or R,G,B then press Enter", px + 20.0f, py + ph - 102.0f, 0.55f, 0.55f, 0.55f);
+    else
+        draw_text("Click a color to edit", px + 20.0f, py + ph - 102.0f, 0.55f, 0.55f, 0.55f);
+
+    // ---- Bottom buttons ----
+    float btn_y = py + ph - 78.0f;
+    struct { float x; float w; const char *label; } b[] = {
+        { px + 20.0f,   72.0f, "Load..." },
+        { px + 104.0f,  92.0f, "Save As..." },
+        { px + 208.0f,  64.0f, "Reset" },
+    };
+    for (int i = 0; i < 3; i++) {
+        draw_rect(b[i].x, btn_y, b[i].w, 28.0f, COLOR_BUTTON, 0.5f);
+        draw_text(b[i].label, b[i].x + 8.0f, btn_y + 19.0f, COLOR_TEXT);
+    }
+
+    draw_rect(px + pw - 74, py + ph - 38, 58.0f, 28.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Close", px + pw - 61, py + ph - 19.0f, 1.0f, 1.0f, 1.0f);
 }
 
 // ---- Main -------------------------------------------------------------------
 int main(void) {
     if (!glfwInit()) return -1;
 
-    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE " UPDATE_CURRENT_VERSION, NULL, NULL);
+    GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE " RMGBE_VERSION, NULL, NULL);
     if (!win) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
 #ifdef _WIN32
-    // Set window icon from embedded resource
+// Icon
     SendMessage(glfwGetWin32Window(win), WM_SETICON, ICON_BIG,
                 (LPARAM)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(1),
                                   IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
@@ -377,15 +538,7 @@ int main(void) {
 
     editor_init(&g_editor);
     fp_init(&g_fp);
-
-    // Clean up previous update backup
-    {
-        char exe_dir[512];
-        get_exe_dir(exe_dir, sizeof(exe_dir));
-        char old_path[1024];
-        snprintf(old_path, sizeof(old_path), "%s\\RMGBE_old.exe", exe_dir);
-        remove(old_path);
-    }
+    theme_init();
 
     char cwd[512];
 #ifdef _WIN32
@@ -445,7 +598,6 @@ int main(void) {
 
         draw_about();
         draw_theme_editor();
-        draw_update_popup();
 
         glfwSwapBuffers(win);
         glfwPollEvents();

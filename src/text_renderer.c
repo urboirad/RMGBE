@@ -80,19 +80,46 @@ static void pop_ortho(void) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void draw_rect(float x, float y, float w, float h, float r, float g, float b, float a) {
+static void rect_impl(float x, float y, float w, float h,
+                      float r1, float g1, float b1, float a1,
+                      float r2, float g2, float b2, float a2,
+                      int vertical) {
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_TEXTURE_2D);
     set_ortho();
-    glColor4f(r, g, b, a);
     glBegin(GL_QUADS);
-        glVertex2f(x,     y);
-        glVertex2f(x + w, y);
-        glVertex2f(x + w, y + h);
-        glVertex2f(x,     y + h);
+        if (vertical) {
+            glColor4f(r1, g1, b1, a1);
+            glVertex2f(x,     y);
+            glVertex2f(x + w, y);
+            glColor4f(r2, g2, b2, a2);
+            glVertex2f(x + w, y + h);
+            glVertex2f(x,     y + h);
+        } else {
+            glColor4f(r1, g1, b1, a1);
+            glVertex2f(x,     y);
+            glColor4f(r2, g2, b2, a2);
+            glVertex2f(x + w, y);
+            glColor4f(r2, g2, b2, a2);
+            glVertex2f(x + w, y + h);
+            glColor4f(r1, g1, b1, a1);
+            glVertex2f(x,     y + h);
+        }
     glEnd();
     pop_ortho();
+    glEnable(GL_TEXTURE_2D);
     glDisable(GL_BLEND);
+}
+
+void draw_rect(float x, float y, float w, float h, float r, float g, float b, float a) {
+    rect_impl(x, y, w, h, r, g, b, a, r, g, b, a, 0);
+}
+
+void draw_rect_gradient(float x, float y, float w, float h,
+                        float r1, float g1, float b1,
+                        float r2, float g2, float b2,
+                        int vertical) {
+    rect_impl(x, y, w, h, r1, g1, b1, 1.0f, r2, g2, b2, 1.0f, vertical);
 }
 
 void draw_text(const char *text, float x, float y, float r, float g, float b) {

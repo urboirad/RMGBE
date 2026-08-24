@@ -1,40 +1,8 @@
 #include "syntax.h"
 #include "text_renderer.h"
+#include "theme.h"
 #include <string.h>
 #include <ctype.h>
-
-// ---- Colors -----------------------------------------------------------------
-#define CLR_DEFAULT_R  224/255.0f
-#define CLR_DEFAULT_G  224/255.0f
-#define CLR_DEFAULT_B  224/255.0f
-
-#define CLR_KEYWORD_R   86/255.0f
-#define CLR_KEYWORD_G  156/255.0f
-#define CLR_KEYWORD_B  214/255.0f
-
-#define CLR_TYPE_R      78/255.0f
-#define CLR_TYPE_G     201/255.0f
-#define CLR_TYPE_B     176/255.0f
-
-#define CLR_STRING_R   209/255.0f
-#define CLR_STRING_G   154/255.0f
-#define CLR_STRING_B   102/255.0f
-
-#define CLR_NUMBER_R   209/255.0f
-#define CLR_NUMBER_G   154/255.0f
-#define CLR_NUMBER_B   102/255.0f
-
-#define CLR_COMMENT_R  106/255.0f
-#define CLR_COMMENT_G  106/255.0f
-#define CLR_COMMENT_B  106/255.0f
-
-#define CLR_PREPROC_R  198/255.0f
-#define CLR_PREPROC_G  120/255.0f
-#define CLR_PREPROC_B  221/255.0f
-
-#define CLR_OPERATOR_R  86/255.0f
-#define CLR_OPERATOR_G 156/255.0f
-#define CLR_OPERATOR_B 214/255.0f
 
 // ---- Keywords ---------------------------------------------------------------
 static const char *c_keywords[] = {
@@ -227,14 +195,14 @@ int syntax_tokenize(const char *line, Token *out, int max_tokens, SyntaxState *s
 // ---- Drawing ----------------------------------------------------------------
 static void token_color(TokenType type, float *cr, float *cg, float *cb) {
     switch (type) {
-        case TOK_KEYWORD:  *cr = CLR_KEYWORD_R;  *cg = CLR_KEYWORD_G;  *cb = CLR_KEYWORD_B;  return;
-        case TOK_TYPE:     *cr = CLR_TYPE_R;     *cg = CLR_TYPE_G;     *cb = CLR_TYPE_B;     return;
-        case TOK_STRING:   *cr = CLR_STRING_R;   *cg = CLR_STRING_G;   *cb = CLR_STRING_B;   return;
-        case TOK_NUMBER:   *cr = CLR_NUMBER_R;   *cg = CLR_NUMBER_G;   *cb = CLR_NUMBER_B;   return;
-        case TOK_COMMENT:  *cr = CLR_COMMENT_R;  *cg = CLR_COMMENT_G;  *cb = CLR_COMMENT_B;  return;
-        case TOK_PREPROC:  *cr = CLR_PREPROC_R;  *cg = CLR_PREPROC_G;  *cb = CLR_PREPROC_B;  return;
-        case TOK_OPERATOR: *cr = CLR_OPERATOR_R; *cg = CLR_OPERATOR_G; *cb = CLR_OPERATOR_B; return;
-        default:           *cr = CLR_DEFAULT_R;  *cg = CLR_DEFAULT_G;  *cb = CLR_DEFAULT_B;  return;
+        case TOK_KEYWORD:  *cr = g_theme.keyword.r;  *cg = g_theme.keyword.g;  *cb = g_theme.keyword.b;  return;
+        case TOK_TYPE:     *cr = g_theme.type.r;     *cg = g_theme.type.g;     *cb = g_theme.type.b;     return;
+        case TOK_STRING:   *cr = g_theme.string.r;   *cg = g_theme.string.g;   *cb = g_theme.string.b;   return;
+        case TOK_NUMBER:   *cr = g_theme.number.r;   *cg = g_theme.number.g;   *cb = g_theme.number.b;   return;
+        case TOK_COMMENT:  *cr = g_theme.comment.r;  *cg = g_theme.comment.g;  *cb = g_theme.comment.b;  return;
+        case TOK_PREPROC:  *cr = g_theme.preproc.r;  *cg = g_theme.preproc.g;  *cb = g_theme.preproc.b;  return;
+        case TOK_OPERATOR: *cr = g_theme.operatorc.r; *cg = g_theme.operatorc.g; *cb = g_theme.operatorc.b; return;
+        default:           *cr = g_theme.syntax_default.r; *cg = g_theme.syntax_default.g; *cb = g_theme.syntax_default.b;  return;
     }
 }
 

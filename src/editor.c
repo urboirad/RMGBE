@@ -370,7 +370,16 @@ void editor_update(Editor *e, float dt) {
 }
 
 void editor_render(Editor *e, float x, float y, float w, float h) {
-    draw_rect(x, y, w, h, COLOR_ED_BACKGROUND);
+    if (g_theme.bg_gradient == THEME_GRADIENT_VERTICAL)
+        draw_rect_gradient(x, y, w, h,
+                           COLOR_ED_BACKGROUND,
+                           g_theme.background_end.r, g_theme.background_end.g, g_theme.background_end.b, 1);
+    else if (g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL)
+        draw_rect_gradient(x, y, w, h,
+                           COLOR_ED_BACKGROUND,
+                           g_theme.background_end.r, g_theme.background_end.g, g_theme.background_end.b, 0);
+    else
+        draw_rect(x, y, w, h, COLOR_ED_BACKGROUND, 1.0f);
 
     float cw  = text_char_width();
     float ch  = text_char_height();
@@ -454,6 +463,6 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     snprintf(status, sizeof(status), " %s  %s  %d:%d",
              mode_str, e->filepath[0] ? e->filepath : "[No File]",
              e->cursor_row + 1, e->cursor_col + 1);
-    draw_rect(x, y + h - 20.0f, w, 20.0f, COLOR_TOOLBAR);
+    draw_rect(x, y + h - 20.0f, w, 20.0f, COLOR_TOOLBAR, 1.0f);
     draw_text(status, x + 4, y + h - 4.0f, COLOR_TEXT);
 }
