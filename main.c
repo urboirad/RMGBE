@@ -91,11 +91,12 @@ static int open_folder_dialog(char *out, int out_len) {
     return 1;
 }
 
-static int open_file_dialog(char *out, int out_len) {
+static int open_file_dialog(char *out, int out_len, const char *filter) {
     OPENFILENAMEA ofn = {0};
     ofn.lStructSize = sizeof(ofn);
     ofn.lpstrFile   = out;
     ofn.nMaxFile    = out_len;
+    ofn.lpstrFilter = filter;
     ofn.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
     out[0] = '\0';
     return GetOpenFileNameA(&ofn);
@@ -125,7 +126,8 @@ static int open_folder_dialog(char *out, int out_len) {
     return 0;
 }
 
-static int open_file_dialog(char *out, int out_len) {
+static int open_file_dialog(char *out, int out_len, const char *filter) {
+    (void)filter;
     (void)out_len;
     out[0] = '\0';
     return 0;
@@ -302,7 +304,8 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             if (mx >= b[i].x && mx <= b[i].x + b[i].w && my >= btn_y && my <= btn_y + 24.0f) {
                 if (i == 0) {
                     char path[1024] = "";
-                    if (open_file_dialog(path, sizeof(path))) {
+                    if (open_file_dialog(path, sizeof(path),
+                                          "RMGBE Themes (*.rmgtheme)\0*.rmgtheme\0All Files (*.*)\0*.*\0")) {
                         char err[256];
                         if (!theme_load_file(path, err, sizeof(err)))
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
@@ -349,7 +352,8 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         if (mx >= 98 && mx <= 224) {
             char path[512] = "";
-            if (open_file_dialog(path, sizeof(path)))
+            if (open_file_dialog(path, sizeof(path),
+                                 "Source Files (*.c;*.h;*.cpp;*.txt)\0*.c;*.h;*.cpp;*.txt\0All Files (*.*)\0*.*\0"))
                 editor_open_file(&g_editor, path);
         }
         if (mx >= 188 && mx <= 292)
