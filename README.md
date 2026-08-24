@@ -62,7 +62,7 @@ Click **Theme** in the toolbar to open the theme editor. You can customize:
 
 ### Theme files (.rmgtheme)
 
-Themes can be saved and shared as `.rmgtheme` files — simple text files with hex color values:
+Themes can be saved and shared as `.rmgtheme` files - simple text files with hex color values:
 
 ```
 name = My Theme
