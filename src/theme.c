@@ -146,7 +146,8 @@ int theme_load_file(const char *path, char *err, int err_size) {
         return 0;
     }
 
-    Theme t = g_theme; // start from current so missing keys keep values
+    Theme saved = g_theme;
+    theme_init(); // reset to defaults first
 
     char line[512];
     int lineno = 0;
@@ -162,16 +163,17 @@ int theme_load_file(const char *path, char *err, int err_size) {
         char *val = trim(eq + 1);
 
         if (!strcmp(key, "name")) {
-            snprintf(t.name, sizeof(t.name), "%s", val);
+            snprintf(g_theme.name, sizeof(g_theme.name), "%s", val);
         } else if (!strcmp(key, "background_gradient")) {
-            if (!strcmp(val, "vertical"))      t.bg_gradient = THEME_GRADIENT_VERTICAL;
-            else if (!strcmp(val, "horizontal")) t.bg_gradient = THEME_GRADIENT_HORIZONTAL;
-            else                                 t.bg_gradient = THEME_GRADIENT_NONE;
+            if (!strcmp(val, "vertical"))      g_theme.bg_gradient = THEME_GRADIENT_VERTICAL;
+            else if (!strcmp(val, "horizontal")) g_theme.bg_gradient = THEME_GRADIENT_HORIZONTAL;
+            else                                 g_theme.bg_gradient = THEME_GRADIENT_NONE;
         } else {
             int found = 0;
             for (int i = 0; i < ENTRY_COUNT; i++) {
                 if (!strcmp(key, s_entries[i].key)) {
                     if (!theme_parse_color(val, s_entries[i].color)) {
+                        g_theme = saved;
                         fclose(f);
                         snprintf(err, err_size, "Line %d: bad color '%s'", lineno, val);
                         return 0;
@@ -180,12 +182,11 @@ int theme_load_file(const char *path, char *err, int err_size) {
                     break;
                 }
             }
-            if (!found) continue; // unknown keys are ignored (forward compat)
+            if (!found) continue;
         }
     }
     fclose(f);
 
-    g_theme = t;
     err[0] = '\0';
     return 1;
 }
