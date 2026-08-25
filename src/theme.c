@@ -3,6 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <shlobj.h>
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 Theme g_theme;
 
@@ -214,4 +221,53 @@ int theme_save_file(const char *path, char *err, int err_size) {
 
     err[0] = '\0';
     return 1;
+}
+
+// ---- Persisted theme (auto-saved across sessions) ----------------------------
+
+static void get_persisted_path(char *buf, int buf_size) {
+#ifdef _WIN32
+    char appdata[MAX_PATH];
+    if (SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appdata) == S_OK)
+        snprintf(buf, buf_size, "%s\\RMGBE\\theme.rmgtheme", appdata);
+    else
+        snprintf(buf, buf_size, "theme.rmgtheme");
+#else
+    const char *home = getenv("HOME");
+    if (home)
+        snprintf(buf, buf_size, "%s/.config/RMGBE/theme.rmgtheme", home);
+    else
+        snprintf(buf, buf_size, "theme.rmgtheme");
+#endif
+}
+
+static void ensure_dir(const char *path) {
+#ifdef _WIN32
+    char dir[MAX_PATH];
+    strncpy(dir, path, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = '\0';
+    char *sep = strrchr(dir, '\\');
+    if (sep) { *sep = '\0'; CreateDirectoryA(dir, NULL); }
+#else
+    char dir[1024];
+    strncpy(dir, path, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = '\0';
+    char *sep = strrchr(dir, '/');
+    if (sep) { *sep = '\0'; mkdir(dir, 0755); }
+#endif
+}
+
+int theme_load_persisted(void) {
+    char path[1024];
+    get_persisted_path(path, sizeof(path));
+    char err[256];
+    return theme_load_file(path, err, sizeof(err));
+}
+
+void theme_save_persisted(void) {
+    char path[1024];
+    get_persisted_path(path, sizeof(path));
+    ensure_dir(path);
+    char err[256];
+    theme_save_file(path, err, sizeof(err));
 }

@@ -48,6 +48,10 @@ void theme_reset(void);  // same as init
 int theme_load_file(const char *path, char *err, int err_size);
 int theme_save_file(const char *path, char *err, int err_size);
 
+// Load/save persisted theme (auto-saved across sessions)
+int  theme_load_persisted(void);
+void theme_save_persisted(void);
+
 // Parse a single color string: "#RRGGBB", "RRGGBB" or "r,g,b". Returns 1 on ok.
 int theme_parse_color(const char *s, ThemeColor *out);
 

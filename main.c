@@ -156,6 +156,7 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
                         if (theme_parse_color(g_theme_input, &c)) {
                             *theme_entry_by_index(g_theme_sel).color = c;
                             g_theme_msg[0] = '\0';
+                            theme_save_persisted();
                         } else {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "Bad color value");
                         }
@@ -290,6 +291,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         float gr_x = px + 320.0f, gr_y = py + ph - 140.0f, gr_w = 160.0f;
         if (mx >= gr_x && mx <= gr_x + gr_w && my >= gr_y && my <= gr_y + 26.0f) {
             g_theme.bg_gradient = (g_theme.bg_gradient + 1) % 3;
+            theme_save_persisted();
             return;
         }
 
@@ -312,6 +314,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                         else {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "Loaded %s", g_theme.name);
                             g_theme_sel = -1; g_theme_input_on = 0;
+                            theme_save_persisted();
                         }
                     }
                 } else if (i == 1) {
@@ -323,12 +326,15 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                         char err[256];
                         if (!theme_save_file(path, err, sizeof(err)))
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
-                        else
+                        else {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "Saved");
+                            theme_save_persisted();
+                        }
                     }
                 } else {
                     theme_reset();
                     snprintf(g_theme_msg, sizeof(g_theme_msg), "Defaults restored");
+                    theme_save_persisted();
                     g_theme_sel = -1; g_theme_input_on = 0;
                 }
                 return;
@@ -543,6 +549,7 @@ int main(void) {
     editor_init(&g_editor);
     fp_init(&g_fp);
     theme_init();
+    theme_load_persisted();
 
     char cwd[512];
 #ifdef _WIN32
