@@ -9,7 +9,7 @@ Features syntax highlighting for C/C++, a built-in terminal, file browser sideba
 **Windows:**
 Requires [MinGW](https://www.mingw-w64.org/) with GCC. GLFW is included in `lib/`.
 ```sh
-build.bat release    # optimized (~869 KB)
+build.bat release    # optimized (~1.4 MB)
 build.bat debug      # with debug symbols
 ```
 Output: `output/RMGBE.exe`
