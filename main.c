@@ -122,24 +122,6 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
     return 1;
 }
 #else
-static int open_folder_dialog(char *out, int out_len) {
-    out[0] = '\0';
-    char cmd[1024];
-#if defined(__APPLE__)
-    snprintf(cmd, sizeof(cmd),
-        "osascript -e 'tell application \"Finder\" to set f to choose folder' "
-        "-e 'POSIX path of f'");
-    return run_dialog(cmd, out, out_len);
-#else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    return 0;
-#endif
-}
 
 static int run_dialog(const char *cmd, char *out, int out_len) {
     FILE *p = popen(cmd, "r");
@@ -163,6 +145,25 @@ static int has_cmd(const char *cmd) {
     return ok;
 }
 
+static int open_folder_dialog(char *out, int out_len) {
+    out[0] = '\0';
+    char cmd[1024];
+#if defined(__APPLE__)
+    snprintf(cmd, sizeof(cmd),
+        "osascript -e 'tell application \"Finder\" to set f to choose folder' "
+        "-e 'POSIX path of f'");
+    return run_dialog(cmd, out, out_len);
+#else
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    return 0;
+#endif
+}
+
 static int open_file_dialog(char *out, int out_len, const char *filter) {
     (void)filter;
     out[0] = '\0';
@@ -179,7 +180,6 @@ static int open_file_dialog(char *out, int out_len, const char *filter) {
         return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
     if (has_cmd("yad"))
         return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
-    // xdg-open is for opening files with default app, not selecting them — skip
     return 0;
 #endif
 }
