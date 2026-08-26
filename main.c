@@ -129,17 +129,37 @@ static int open_folder_dialog(char *out, int out_len) {
     snprintf(cmd, sizeof(cmd),
         "osascript -e 'tell application \"Finder\" to set f to choose folder' "
         "-e 'POSIX path of f'");
+    return run_dialog(cmd, out, out_len);
 #else
-    snprintf(cmd, sizeof(cmd), "zenity --file-selection --directory --title='Open Folder' 2>/dev/null");
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    return 0;
 #endif
+}
+
+static int run_dialog(const char *cmd, char *out, int out_len) {
     FILE *p = popen(cmd, "r");
     if (!p) return 0;
+    out[0] = '\0';
     if (fgets(out, out_len, p)) {
         size_t len = strlen(out);
         while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
     }
     int ok = pclose(p) == 0 && out[0] != '\0';
     if (!ok) out[0] = '\0';
+    return ok;
+}
+
+static int has_cmd(const char *cmd) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "which %s 2>/dev/null", cmd);
+    FILE *p = popen(buf, "r");
+    if (!p) return 0;
+    int ok = pclose(p) == 0;
     return ok;
 }
 
@@ -151,40 +171,37 @@ static int open_file_dialog(char *out, int out_len, const char *filter) {
     snprintf(cmd, sizeof(cmd),
         "osascript -e 'tell application \"Finder\" to set f to choose file' "
         "-e 'POSIX path of f'");
+    return run_dialog(cmd, out, out_len);
 #else
-    snprintf(cmd, sizeof(cmd), "zenity --file-selection --title='Open File' 2>/dev/null");
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --title='Open File' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
+    // xdg-open is for opening files with default app, not selecting them — skip
+    return 0;
 #endif
-    FILE *p = popen(cmd, "r");
-    if (!p) return 0;
-    if (fgets(out, out_len, p)) {
-        size_t len = strlen(out);
-        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
-    }
-    int ok = pclose(p) == 0 && out[0] != '\0';
-    if (!ok) out[0] = '\0';
-    return ok;
 }
 
 static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
     (void)filter; (void)def_ext;
+    out[0] = '\0';
     char cmd[1024];
 #if defined(__APPLE__)
     snprintf(cmd, sizeof(cmd),
         "osascript -e 'tell application \"Finder\" to set f to choose file name' "
         "-e 'POSIX path of f'");
+    return run_dialog(cmd, out, out_len);
 #else
-    snprintf(cmd, sizeof(cmd),
-        "zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null");
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getsavefilename . --title 'Save As' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
+    return 0;
 #endif
-    FILE *p = popen(cmd, "r");
-    if (!p) { out[0] = '\0'; return 0; }
-    if (fgets(out, out_len, p)) {
-        size_t len = strlen(out);
-        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
-    }
-    int ok = pclose(p) == 0 && out[0] != '\0';
-    if (!ok) out[0] = '\0';
-    return ok;
 }
 #endif
 
