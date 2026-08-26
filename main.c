@@ -4,6 +4,9 @@
 #include <objbase.h>
 #else
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
@@ -120,23 +123,68 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
 }
 #else
 static int open_folder_dialog(char *out, int out_len) {
-    (void)out_len;
-    // Linux/Mac don't have a native folder picker, so just use current directory
-    if (getcwd(out, out_len)) return 1;
-    return 0;
+    out[0] = '\0';
+    char cmd[1024];
+#if defined(__APPLE__)
+    snprintf(cmd, sizeof(cmd),
+        "osascript -e 'tell application \"Finder\" to set f to choose folder' "
+        "-e 'POSIX path of f'");
+#else
+    snprintf(cmd, sizeof(cmd), "zenity --file-selection --directory --title='Open Folder' 2>/dev/null");
+#endif
+    FILE *p = popen(cmd, "r");
+    if (!p) return 0;
+    if (fgets(out, out_len, p)) {
+        size_t len = strlen(out);
+        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
+    }
+    int ok = pclose(p) == 0 && out[0] != '\0';
+    if (!ok) out[0] = '\0';
+    return ok;
 }
 
 static int open_file_dialog(char *out, int out_len, const char *filter) {
     (void)filter;
-    (void)out_len;
     out[0] = '\0';
-    return 0;
+    char cmd[1024];
+#if defined(__APPLE__)
+    snprintf(cmd, sizeof(cmd),
+        "osascript -e 'tell application \"Finder\" to set f to choose file' "
+        "-e 'POSIX path of f'");
+#else
+    snprintf(cmd, sizeof(cmd), "zenity --file-selection --title='Open File' 2>/dev/null");
+#endif
+    FILE *p = popen(cmd, "r");
+    if (!p) return 0;
+    if (fgets(out, out_len, p)) {
+        size_t len = strlen(out);
+        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
+    }
+    int ok = pclose(p) == 0 && out[0] != '\0';
+    if (!ok) out[0] = '\0';
+    return ok;
 }
 
 static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
-    (void)out_len; (void)filter; (void)def_ext;
-    out[0] = '\0';
-    return 0;
+    (void)filter; (void)def_ext;
+    char cmd[1024];
+#if defined(__APPLE__)
+    snprintf(cmd, sizeof(cmd),
+        "osascript -e 'tell application \"Finder\" to set f to choose file name' "
+        "-e 'POSIX path of f'");
+#else
+    snprintf(cmd, sizeof(cmd),
+        "zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null");
+#endif
+    FILE *p = popen(cmd, "r");
+    if (!p) { out[0] = '\0'; return 0; }
+    if (fgets(out, out_len, p)) {
+        size_t len = strlen(out);
+        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
+    }
+    int ok = pclose(p) == 0 && out[0] != '\0';
+    if (!ok) out[0] = '\0';
+    return ok;
 }
 #endif
 
