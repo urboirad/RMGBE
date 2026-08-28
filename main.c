@@ -160,6 +160,15 @@ static int open_folder_dialog(char *out, int out_len) {
         return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
     if (has_cmd("yad"))
         return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    // Thunar/XFCE: use XDG Desktop Portal via dbus
+    if (has_cmd("dbus-send"))
+        return run_dialog(
+            "dbus-send --session --dest=org.freedesktop.portal.Desktop "
+            "--type=method_call --print-reply /org/freedesktop/portal/desktop "
+            "org.freedesktop.portal.FileChooser.OpenDirectory "
+            "string:'' dict:string:variant 2>/dev/null "
+            "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
+            out, out_len);
     return 0;
 #endif
 }
@@ -180,6 +189,14 @@ static int open_file_dialog(char *out, int out_len, const char *filter) {
         return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
     if (has_cmd("yad"))
         return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
+    if (has_cmd("dbus-send"))
+        return run_dialog(
+            "dbus-send --session --dest=org.freedesktop.portal.Desktop "
+            "--type=method_call --print-reply /org/freedesktop/portal/desktop "
+            "org.freedesktop.portal.FileChooser.OpenFile "
+            "string:'' dict:string:variant 2>/dev/null "
+            "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
+            out, out_len);
     return 0;
 #endif
 }
@@ -200,6 +217,14 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
         return run_dialog("kdialog --getsavefilename . --title 'Save As' 2>/dev/null", out, out_len);
     if (has_cmd("yad"))
         return run_dialog("yad --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
+    if (has_cmd("dbus-send"))
+        return run_dialog(
+            "dbus-send --session --dest=org.freedesktop.portal.Desktop "
+            "--type=method_call --print-reply /org/freedesktop/portal/desktop "
+            "org.freedesktop.portal.FileChooser.SaveFile "
+            "string:'' dict:string:variant 2>/dev/null "
+            "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
+            out, out_len);
     return 0;
 #endif
 }
