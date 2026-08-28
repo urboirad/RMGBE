@@ -154,13 +154,7 @@ static int open_folder_dialog(char *out, int out_len) {
         "-e 'POSIX path of f'");
     return run_dialog(cmd, out, out_len);
 #else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    // Thunar/XFCE: use XDG Desktop Portal via dbus
+    // XDG Desktop Portal — works on most DEs (GNOME, KDE, XFCE, etc.)
     if (has_cmd("dbus-send"))
         return run_dialog(
             "dbus-send --session --dest=org.freedesktop.portal.Desktop "
@@ -169,6 +163,12 @@ static int open_folder_dialog(char *out, int out_len) {
             "string:'' dict:string:variant 2>/dev/null "
             "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
             out, out_len);
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
     return 0;
 #endif
 }
@@ -183,12 +183,6 @@ static int open_file_dialog(char *out, int out_len, const char *filter) {
         "-e 'POSIX path of f'");
     return run_dialog(cmd, out, out_len);
 #else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --title='Open File' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
     if (has_cmd("dbus-send"))
         return run_dialog(
             "dbus-send --session --dest=org.freedesktop.portal.Desktop "
@@ -197,6 +191,12 @@ static int open_file_dialog(char *out, int out_len, const char *filter) {
             "string:'' dict:string:variant 2>/dev/null "
             "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
             out, out_len);
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --title='Open File' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
     return 0;
 #endif
 }
@@ -211,12 +211,6 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
         "-e 'POSIX path of f'");
     return run_dialog(cmd, out, out_len);
 #else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getsavefilename . --title 'Save As' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
     if (has_cmd("dbus-send"))
         return run_dialog(
             "dbus-send --session --dest=org.freedesktop.portal.Desktop "
@@ -225,6 +219,12 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
             "string:'' dict:string:variant 2>/dev/null "
             "| grep variant | head -1 | sed 's/.*string \"//;s/\".*//'",
             out, out_len);
+    if (has_cmd("zenity"))
+        return run_dialog("zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
+    if (has_cmd("kdialog"))
+        return run_dialog("kdialog --getsavefilename . --title 'Save As' 2>/dev/null", out, out_len);
+    if (has_cmd("yad"))
+        return run_dialog("yad --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
     return 0;
 #endif
 }
