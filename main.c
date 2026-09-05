@@ -12,6 +12,7 @@
 #endif
 #endif
 
+#include "tinyfiledialogs.h"
 #include "GLFW/glfw3.h"
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -40,6 +41,11 @@ static int g_focus = 0;
 
 static double g_last_time = 0.0;
 static float g_editor_x, g_editor_y;
+
+// FPS counter
+static int   g_fps_frame_count = 0;
+static double g_fps_last_update = 0.0;
+static float  g_fps_value = 0.0f;
 
 // Popups
 static int g_about_open = 0;
@@ -83,144 +89,29 @@ static void get_exe_dir(char *buf, int len) {
 
 #ifdef _WIN32
 static int open_folder_dialog(char *out, int out_len) {
-    (void)out_len;
-    BROWSEINFOA bi = {0};
-    bi.lpszTitle  = "Select project folder";
-    bi.ulFlags    = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
-    if (!pidl) return 0;
-    SHGetPathFromIDListA(pidl, out);
-    CoTaskMemFree(pidl);
-    return 1;
-}
-
-static int open_file_dialog(char *out, int out_len, const char *filter) {
-    OPENFILENAMEA ofn = {0};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.lpstrFile   = out;
-    ofn.nMaxFile    = out_len;
-    ofn.lpstrFilter = filter;
-    ofn.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    out[0] = '\0';
-    return GetOpenFileNameA(&ofn);
-}
-
-static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
-    OPENFILENAMEA ofn = {0};
-    char buf[1024];
-    strncpy(buf, out, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
-    ofn.lStructSize = sizeof(ofn);
-    ofn.lpstrFile   = buf;
-    ofn.nMaxFile    = sizeof(buf);
-    ofn.lpstrFilter = filter;
-    ofn.lpstrDefExt = def_ext;
-    ofn.Flags       = OFN_OVERWRITEPROMPT;
-    if (!GetSaveFileNameA(&ofn)) return 0;
-    strncpy(out, buf, out_len - 1);
+    const char *result = tinyfd_selectFolderDialog("Open Folder", NULL);
+    if (!result) { out[0] = '\0'; return 0; }
+    strncpy(out, result, out_len - 1);
     out[out_len - 1] = '\0';
     return 1;
-}
-#else
-
-static int run_dialog(const char *cmd, char *out, int out_len) {
-    FILE *p = popen(cmd, "r");
-    if (!p) return 0;
-    out[0] = '\0';
-    if (fgets(out, out_len, p)) {
-        size_t len = strlen(out);
-        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
-    }
-    int ok = pclose(p) == 0 && out[0] != '\0';
-    if (!ok) out[0] = '\0';
-    return ok;
-}
-
-static int has_cmd(const char *cmd) {
-    char buf[256];
-    snprintf(buf, sizeof(buf), "which %s 2>/dev/null", cmd);
-    FILE *p = popen(buf, "r");
-    if (!p) return 0;
-    int ok = pclose(p) == 0;
-    return ok;
-}
-
-static int open_folder_dialog(char *out, int out_len) {
-    out[0] = '\0';
-    char cmd[1024];
-#if defined(__APPLE__)
-    snprintf(cmd, sizeof(cmd),
-        "osascript -e 'tell application \"Finder\" to set f to choose folder' "
-        "-e 'POSIX path of f'");
-    return run_dialog(cmd, out, out_len);
-#else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getexistingdirectory . --title 'Open Folder' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --directory --title='Open Folder' 2>/dev/null", out, out_len);
-    // Python tkinter fallback — works on any system with Python
-    return run_dialog(
-        "python3 -c \""
-        "import tkinter as tk; from tkinter import filedialog; "
-        "r=tk.Tk(); r.withdraw(); r.attributes('-topmost',True); "
-        "f=filedialog.askdirectory(title='Open Folder'); "
-        "print(f if f else ''); r.destroy()\"",
-        out, out_len);
-#endif
 }
 
 static int open_file_dialog(char *out, int out_len, const char *filter) {
     (void)filter;
-    out[0] = '\0';
-    char cmd[1024];
-#if defined(__APPLE__)
-    snprintf(cmd, sizeof(cmd),
-        "osascript -e 'tell application \"Finder\" to set f to choose file' "
-        "-e 'POSIX path of f'");
-    return run_dialog(cmd, out, out_len);
-#else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --title='Open File' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getopenfilename . --title 'Open File' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --title='Open File' 2>/dev/null", out, out_len);
-    return run_dialog(
-        "python3 -c \""
-        "import tkinter as tk; from tkinter import filedialog; "
-        "r=tk.Tk(); r.withdraw(); r.attributes('-topmost',True); "
-        "f=filedialog.askopenfilename(title='Open File'); "
-        "print(f if f else ''); r.destroy()\"",
-        out, out_len);
-#endif
+    const char *result = tinyfd_openFileDialog("Open File", NULL, 0, NULL, NULL, 0);
+    if (!result) { out[0] = '\0'; return 0; }
+    strncpy(out, result, out_len - 1);
+    out[out_len - 1] = '\0';
+    return 1;
 }
 
 static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
     (void)filter; (void)def_ext;
-    out[0] = '\0';
-    char cmd[1024];
-#if defined(__APPLE__)
-    snprintf(cmd, sizeof(cmd),
-        "osascript -e 'tell application \"Finder\" to set f to choose file name' "
-        "-e 'POSIX path of f'");
-    return run_dialog(cmd, out, out_len);
-#else
-    if (has_cmd("zenity"))
-        return run_dialog("zenity --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
-    if (has_cmd("kdialog"))
-        return run_dialog("kdialog --getsavefilename . --title 'Save As' 2>/dev/null", out, out_len);
-    if (has_cmd("yad"))
-        return run_dialog("yad --file-selection --save --confirm-overwrite --title='Save As' 2>/dev/null", out, out_len);
-    return run_dialog(
-        "python3 -c \""
-        "import tkinter as tk; from tkinter import filedialog; "
-        "r=tk.Tk(); r.withdraw(); r.attributes('-topmost',True); "
-        "f=filedialog.asksaveasfilename(title='Save As', defaultextension='.txt'); "
-        "print(f if f else ''); r.destroy()\"",
-        out, out_len);
-#endif
+    const char *result = tinyfd_saveFileDialog("Save As", NULL, 0, NULL, NULL);
+    if (!result) { out[0] = '\0'; return 0; }
+    strncpy(out, result, out_len - 1);
+    out[out_len - 1] = '\0';
+    return 1;
 }
 #endif
 
@@ -693,6 +584,17 @@ int main(void) {
 
         draw_about();
         draw_theme_editor();
+
+        // FPS counter
+        g_fps_frame_count++;
+        if (now - g_fps_last_update >= 1.0) {
+            g_fps_value = (float)g_fps_frame_count / (float)(now - g_fps_last_update);
+            g_fps_frame_count = 0;
+            g_fps_last_update = now;
+        }
+        char fps_str[32];
+        snprintf(fps_str, sizeof(fps_str), "%.0f FPS", g_fps_value);
+        draw_text(fps_str, (float)g_win_w - 60.0f, 10.0f, 0.6f, 0.8f, 0.6f);
 
         glfwSwapBuffers(win);
         glfwPollEvents();

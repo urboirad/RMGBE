@@ -6,6 +6,7 @@
 
 #define EDITOR_MAX_LINES 4096
 #define EDITOR_LINE_LEN  1024
+#define SYNTAX_CACHE_INTERVAL 64
 
 typedef struct {
     GapBuffer      gb;
@@ -26,6 +27,9 @@ typedef struct {
     int  line_count;
     int  line_cap;
     int  lines_dirty;    // set when line_offsets needs rebuilding
+    struct SyntaxState *syntax_cache;  // cached syntax states at intervals
+    int  syntax_cache_count;
+    int  syntax_cache_dirty;
 } Editor;
 
 void editor_init(Editor *e);

@@ -9,6 +9,8 @@ typedef struct {
     char  full_path[FP_NAME_LEN * 2];
     int   is_dir;
     int   depth;
+    int   expanded;   // for directories: 1 if expanded, 0 if collapsed
+    int   parent_idx; // index of parent directory entry, -1 for root
 } FileEntry;
 
 typedef struct {

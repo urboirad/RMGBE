@@ -18,7 +18,7 @@ void fp_init(FilePanel *fp) {
     fp->root[0]  = '\0';
 }
 
-static void scan_dir(FilePanel *fp, const char *path, int depth) {
+static void scan_dir(FilePanel *fp, const char *path, int depth, int parent_idx) {
     if (fp->count >= FP_MAX_ENTRIES) return;
 
 #ifdef _WIN32
@@ -31,11 +31,15 @@ static void scan_dir(FilePanel *fp, const char *path, int depth) {
     do {
         if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
         if (fp->count >= FP_MAX_ENTRIES) break;
-        FileEntry *e = &fp->entries[fp->count++];
+        FileEntry *e = &fp->entries[fp->count];
+        int idx = fp->count;
+        fp->count++;
         strncpy(e->name, fd.cFileName, FP_NAME_LEN - 1);
         snprintf(e->full_path, sizeof(e->full_path), "%s\\%s", path, fd.cFileName);
         e->is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         e->depth  = depth;
+        e->expanded = 0;
+        e->parent_idx = parent_idx;
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 #else
@@ -47,10 +51,14 @@ static void scan_dir(FilePanel *fp, const char *path, int depth) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         if (fp->count >= FP_MAX_ENTRIES) break;
 
-        FileEntry *e = &fp->entries[fp->count++];
+        FileEntry *e = &fp->entries[fp->count];
+        int idx = fp->count;
+        fp->count++;
         strncpy(e->name, ent->d_name, FP_NAME_LEN - 1);
         snprintf(e->full_path, sizeof(e->full_path), "%s/%s", path, ent->d_name);
         e->depth = depth;
+        e->expanded = 0;
+        e->parent_idx = parent_idx;
 
         struct stat st;
         if (stat(e->full_path, &st) == 0)
@@ -66,7 +74,77 @@ void fp_open_dir(FilePanel *fp, const char *path) {
     strncpy(fp->root, path, sizeof(fp->root) - 1);
     fp->count    = 0;
     fp->selected = -1;
-    scan_dir(fp, path, 0);
+    scan_dir(fp, path, 0, -1);
+}
+
+static int is_visible(FilePanel *fp, int idx) {
+    int cur = fp->entries[idx].parent_idx;
+    while (cur >= 0) {
+        if (!fp->entries[cur].expanded) return 0;
+        cur = fp->entries[cur].parent_idx;
+    }
+    return 1;
+}
+
+static void toggle_dir(FilePanel *fp, int idx) {
+    FileEntry *e = &fp->entries[idx];
+    if (!e->is_dir) return;
+
+    if (e->expanded) {
+        // Collapse: remove all descendants
+        int remove_start = idx + 1;
+        int remove_count = 0;
+        for (int i = remove_start; i < fp->count; i++) {
+            // Check if this entry is a descendant (direct or indirect)
+            int cur = fp->entries[i].parent_idx;
+            int found = 0;
+            while (cur >= 0) {
+                if (cur == idx) { found = 1; break; }
+                cur = fp->entries[cur].parent_idx;
+            }
+            if (found) remove_count++;
+            else break; // entries are stored in order, so descendants come first
+        }
+        if (remove_count > 0) {
+            memmove(&fp->entries[remove_start],
+                    &fp->entries[remove_start + remove_count],
+                    (fp->count - remove_start - remove_count) * sizeof(FileEntry));
+            fp->count -= remove_count;
+            if (fp->selected >= remove_start && fp->selected < remove_start + remove_count)
+                fp->selected = -1;
+            else if (fp->selected >= remove_start)
+                fp->selected -= remove_count;
+        }
+        e->expanded = 0;
+    } else {
+        // Expand: scan the directory and insert children right after
+        int insert_at = idx + 1;
+        int old_count = fp->count;
+        scan_dir(fp, e->full_path, e->depth + 1, idx);
+        // If we added entries but they ended up after existing ones, move them
+        if (fp->count > old_count && insert_at < old_count) {
+            // Entries were appended at the end — move them to insert_at
+            int added = fp->count - old_count;
+            // Make room
+            memmove(&fp->entries[insert_at + added],
+                    &fp->entries[insert_at],
+                    (old_count - insert_at) * sizeof(FileEntry));
+            // The new entries are currently at the end; copy them into position
+            // But they were scanned into [old_count..fp->count)
+            // We need to be careful about overlapping moves
+            // Actually, the new entries are at indices [old_count, fp->count)
+            // and we need them at [insert_at, insert_at + added)
+            // Since insert_at <= old_count, there's no overlap if added <= old_count - insert_at
+            // which is always true.
+            // But we just moved [insert_at, old_count) to [insert_at+added, old_count+added)
+            // Now copy new entries from [old_count, fp->count) to [insert_at, insert_at+added)
+            memmove(&fp->entries[insert_at],
+                    &fp->entries[old_count],
+                    added * sizeof(FileEntry));
+            fp->count = old_count + added; // shouldn't have changed
+        }
+        e->expanded = 1;
+    }
 }
 
 void fp_render(FilePanel *fp, float x, float y, float w, float h) {
@@ -82,6 +160,7 @@ void fp_render(FilePanel *fp, float x, float y, float w, float h) {
     ty += row + 4.0f;
 
     for (int i = 0; i < fp->count; i++) {
+        if (!is_visible(fp, i)) continue;
         if (ty + row < y || ty > y + h) { ty += row; continue; }
         FileEntry *e = &fp->entries[i];
 
@@ -91,7 +170,8 @@ void fp_render(FilePanel *fp, float x, float y, float w, float h) {
         char label[FP_NAME_LEN * 2 + 8];
         char indent[32] = "";
         for (int d = 0; d < e->depth && d < 8; d++) strcat(indent, "  ");
-        snprintf(label, sizeof(label), "%s%s%s", indent, e->is_dir ? "▸ " : "  ", e->name);
+        const char *arrow = e->is_dir ? (e->expanded ? "▾ " : "▸ ") : "  ";
+        snprintf(label, sizeof(label), "%s%s%s", indent, arrow, e->name);
 
         float fr = e->is_dir ? 0.9f : 0.85f;
         float fg = e->is_dir ? 0.75f : 0.85f;
@@ -113,11 +193,15 @@ const char *fp_update(FilePanel *fp, float x, float y, float w, float h,
     float ty  = y + 4.0f - fp->scroll + row + 4.0f; // start below the "FILES" title
 
     for (int i = 0; i < fp->count; i++) {
+        if (!is_visible(fp, i)) continue;
         if (my >= ty && my < ty + row) {
             fp->selected = i;
             FileEntry *e = &fp->entries[i];
-            if (!e->is_dir) return e->full_path;
-            return NULL;
+            if (e->is_dir) {
+                toggle_dir(fp, i);
+                return NULL;
+            }
+            return e->full_path;
         }
         ty += row;
     }

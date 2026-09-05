@@ -20,6 +20,7 @@ if(WIN32)
         src/terminal.c
         src/syntax.c
         src/theme.c
+        vendor/tinyfiledialogs.c
         src/resources.rc
     )
 else()
@@ -32,6 +33,7 @@ else()
         src/terminal.c
         src/syntax.c
         src/theme.c
+        vendor/tinyfiledialogs.c
     )
 endif()
 

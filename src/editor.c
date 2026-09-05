@@ -28,6 +28,7 @@ void editor_init(Editor *e) {
 void editor_free(Editor *e) {
     if (e->gb.buffer) free(e->gb.buffer);
     free(e->line_offsets);
+    free(e->syntax_cache);
 }
 
 static char gb_char_logical(GapBuffer *gb, int pos) {
@@ -56,6 +57,38 @@ static void editor_rebuild_lines(Editor *e) {
         start++; // move past the newline
     }
     e->lines_dirty = 0;
+    e->syntax_cache_dirty = 1;
+}
+
+static void editor_rebuild_syntax_cache(Editor *e) {
+    int count = (e->line_count + SYNTAX_CACHE_INTERVAL - 1) / SYNTAX_CACHE_INTERVAL;
+    if (count < 1) count = 1;
+    if (count != e->syntax_cache_count) {
+        e->syntax_cache = realloc(e->syntax_cache, count * sizeof(SyntaxState));
+        e->syntax_cache_count = count;
+    }
+    SyntaxState state = {0};
+    GapBuffer *gb = &e->gb;
+    int n = gb_total_logical(gb);
+    char line[EDITOR_LINE_LEN];
+    for (int li = 0; li < e->line_count; li++) {
+        if (li % SYNTAX_CACHE_INTERVAL == 0) {
+            int idx = li / SYNTAX_CACHE_INTERVAL;
+            e->syntax_cache[idx] = state;
+        }
+        int lstart = e->line_offsets[li];
+        int lend = (li + 1 < e->line_count) ? e->line_offsets[li + 1] : n;
+        int llen = 0;
+        for (int k = lstart; k < lend && k < n; k++) {
+            char c = gb_char_logical(gb, k);
+            if (c == '\n') break;
+            if (llen < EDITOR_LINE_LEN - 1) line[llen++] = c;
+        }
+        line[llen] = '\0';
+        Token dummy[1];
+        syntax_tokenize(line, dummy, 0, &state);
+    }
+    e->syntax_cache_dirty = 0;
 }
 
 void editor_open_file(Editor *e, const char *path) {
@@ -221,7 +254,7 @@ void editor_mouse_release(Editor *e) {
 void editor_scroll(Editor *e, float yoffset) {
     float ch = text_char_height();
     float row = ch + 2.0f;
-    e->scroll_y -= yoffset * 3.0f * row;
+    e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
 }
 
@@ -411,14 +444,47 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
 
     int sel_start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
     int sel_end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
-    SyntaxState syntax_state = {0};
 
     if (e->lines_dirty) editor_rebuild_lines(e);
+    if (e->syntax_cache_dirty) editor_rebuild_syntax_cache(e);
 
-    for (int li = 0; li < e->line_count; li++) {
+    // Find the first visible line
+    int first_vis = 0;
+    if (row > 0) {
+        first_vis = (int)((e->scroll_y - y) / row);
+        if (first_vis < 0) first_vis = 0;
+        if (first_vis >= e->line_count) first_vis = e->line_count - 1;
+    }
+
+    // Restore syntax state from nearest cache point
+    SyntaxState syntax_state = {0};
+    int cache_idx = first_vis / SYNTAX_CACHE_INTERVAL;
+    if (cache_idx < e->syntax_cache_count && e->syntax_cache)
+        syntax_state = e->syntax_cache[cache_idx];
+    int cache_line = cache_idx * SYNTAX_CACHE_INTERVAL;
+
+    // Advance state from cache point to first visible line
+    for (int li = cache_line; li < first_vis && li < e->line_count; li++) {
         int lstart = e->line_offsets[li];
         int lend = (li + 1 < e->line_count) ? e->line_offsets[li + 1] : n;
-        // lend is the start of the next line, or one past the end of the buffer
+        int llen = 0;
+        for (int k = lstart; k < lend && k < n; k++) {
+            char c = gb_char_logical(gb, k);
+            if (c == '\n') break;
+            if (llen < EDITOR_LINE_LEN - 1) line[llen++] = c;
+        }
+        line[llen] = '\0';
+        Token dummy[1];
+        syntax_tokenize(line, dummy, 0, &syntax_state);
+    }
+
+    // Batch all text rendering in a single GL pass
+    text_renderer_begin();
+    for (int li = first_vis; li < e->line_count; li++) {
+        if (ty >= y + h) break;
+
+        int lstart = e->line_offsets[li];
+        int lend = (li + 1 < e->line_count) ? e->line_offsets[li + 1] : n;
         int llen = 0;
         for (int k = lstart; k < lend && k < n; k++) {
             char c = gb_char_logical(gb, k);
@@ -427,34 +493,39 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
         }
         line[llen] = '\0';
 
-        if (ty + row >= y && ty < y + h) {
-        // Highlight selected text on this line
+        if (ty + row >= y) {
+            // Highlight selected text on this line
             if (sel_start != sel_end) {
                 int hl_s = sel_start - lstart;
                 int hl_e = sel_end   - lstart;
                 if (hl_s < llen && hl_e > 0) {
                     if (hl_s < 0) hl_s = 0;
                     if (hl_e > llen) hl_e = llen;
+                    text_renderer_end();
                     draw_rect(x + gutter + hl_s * cw, ty + (row - ch) * 0.5f,
                               (hl_e - hl_s) * cw, ch,
                               0, 188/255.0f, 212/255.0f, 0.3f);
+                    text_renderer_begin();
                 }
             }
-            draw_text_highlighted(line, x + gutter, ty + ch * 0.85f, &syntax_state);
+            // Draw syntax-highlighted text inline in the batch
+            Token tokens[512];
+            int nt = syntax_tokenize(line, tokens, 512, &syntax_state);
+            float tx = x + gutter;
+            for (int ti = 0; ti < nt; ti++) {
+                Token *t = &tokens[ti];
+                float cr, cg, cb;
+                token_color(t->type, &cr, &cg, &cb);
+                batch_text_len(t->start, t->len, &tx, ty + ch * 0.85f, cr, cg, cb);
+            }
+            // Line number
             char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", li + 1);
-            draw_text(lnum, x + 4, ty + ch * 0.85f, COLOR_TEXT);
-        } else if (ty >= y + h) {
-            // We're below the visible area — no need to keep drawing,
-            // but we still need to advance the syntax state for block comments
-            break;
-        } else {
-            // Line is above visible area — just advance syntax state
-            // so block comments are tracked correctly
-            Token dummy[1];
-            syntax_tokenize(line, dummy, 0, &syntax_state);
+            float lnx = x + 4;
+            batch_text(lnum, &lnx, ty + ch * 0.85f, COLOR_TEXT);
         }
         ty += row;
     }
+    text_renderer_end();
 
     // Status bar
     const char *mode_str = e->mode == MODE_INSERT ? "INSERT" :

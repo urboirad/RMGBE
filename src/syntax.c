@@ -193,7 +193,7 @@ int syntax_tokenize(const char *line, Token *out, int max_tokens, SyntaxState *s
 }
 
 // ---- Drawing ----------------------------------------------------------------
-static void token_color(TokenType type, float *cr, float *cg, float *cb) {
+void token_color(TokenType type, float *cr, float *cg, float *cb) {
     switch (type) {
         case TOK_KEYWORD:  *cr = g_theme.keyword.r;  *cg = g_theme.keyword.g;  *cb = g_theme.keyword.b;  return;
         case TOK_TYPE:     *cr = g_theme.type.r;     *cg = g_theme.type.g;     *cb = g_theme.type.b;     return;

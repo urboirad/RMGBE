@@ -32,6 +32,7 @@ jobs:
             -Iinclude -Ivendor \
             main.c src/gap_buffer.c src/text_renderer.c src/editor.c \
             src/file_panel.c src/terminal.c src/syntax.c src/theme.c \
+            vendor/tinyfiledialogs.c \
             resources.o -o RMGBE.exe -s -Wl,--gc-sections \
             -Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lm
 
