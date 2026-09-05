@@ -369,7 +369,19 @@ static void cb_cursor_pos(GLFWwindow *win, double mx, double my) {
 
 static void cb_scroll(GLFWwindow *win, double xoff, double yoff) {
     (void)win; (void)xoff;
-    if (g_focus == 0) editor_scroll(&g_editor, (float)yoff);
+    double mx, my;
+    glfwGetCursorPos(win, &mx, &my);
+    float sidebar_w = (float)PANEL_SIDEBAR_W;
+    float toolbar_h = 32.0f;
+    if (mx < sidebar_w && my > toolbar_h) {
+        // Scroll file panel
+        float ch = text_char_height();
+        float row = ch + 4.0f;
+        g_fp.scroll -= (float)yoff * row;
+        if (g_fp.scroll < 0) g_fp.scroll = 0;
+    } else if (g_focus == 0) {
+        editor_scroll(&g_editor, (float)yoff);
+    }
 }
 
 // ---- Toolbar ----------------------------------------------------------------

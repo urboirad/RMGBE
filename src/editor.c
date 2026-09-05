@@ -256,6 +256,9 @@ void editor_scroll(Editor *e, float yoffset) {
     float row = ch + 2.0f;
     e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
+    float max_scroll = e->line_count * row - 200.0f;
+    if (max_scroll < 0) max_scroll = 0;
+    if (e->scroll_y > max_scroll) e->scroll_y = max_scroll;
 }
 
 void editor_key(Editor *e, int key, int mods) {

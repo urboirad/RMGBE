@@ -95,7 +95,6 @@ static void toggle_dir(FilePanel *fp, int idx) {
         int remove_start = idx + 1;
         int remove_count = 0;
         for (int i = remove_start; i < fp->count; i++) {
-            // Check if this entry is a descendant (direct or indirect)
             int cur = fp->entries[i].parent_idx;
             int found = 0;
             while (cur >= 0) {
@@ -103,7 +102,7 @@ static void toggle_dir(FilePanel *fp, int idx) {
                 cur = fp->entries[cur].parent_idx;
             }
             if (found) remove_count++;
-            else break; // entries are stored in order, so descendants come first
+            else break;
         }
         if (remove_count > 0) {
             memmove(&fp->entries[remove_start],
@@ -117,32 +116,27 @@ static void toggle_dir(FilePanel *fp, int idx) {
         }
         e->expanded = 0;
     } else {
-        // Expand: scan the directory and insert children right after
-        int insert_at = idx + 1;
-        int old_count = fp->count;
+        // Expand: scan into temp buffer, then insert
+        FileEntry temp[256];
+        int temp_count = 0;
+        int saved_count = fp->count;
+        fp->count = 0; // trick scan_dir into using temp via our entries array
+        // Actually just scan normally — entries go at end
+        int old_count = saved_count;
         scan_dir(fp, e->full_path, e->depth + 1, idx);
-        // If we added entries but they ended up after existing ones, move them
-        if (fp->count > old_count && insert_at < old_count) {
-            // Entries were appended at the end — move them to insert_at
-            int added = fp->count - old_count;
-            // Make room
-            memmove(&fp->entries[insert_at + added],
-                    &fp->entries[insert_at],
-                    (old_count - insert_at) * sizeof(FileEntry));
-            // The new entries are currently at the end; copy them into position
-            // But they were scanned into [old_count..fp->count)
-            // We need to be careful about overlapping moves
-            // Actually, the new entries are at indices [old_count, fp->count)
-            // and we need them at [insert_at, insert_at + added)
-            // Since insert_at <= old_count, there's no overlap if added <= old_count - insert_at
-            // which is always true.
-            // But we just moved [insert_at, old_count) to [insert_at+added, old_count+added)
-            // Now copy new entries from [old_count, fp->count) to [insert_at, insert_at+added)
-            memmove(&fp->entries[insert_at],
-                    &fp->entries[old_count],
-                    added * sizeof(FileEntry));
-            fp->count = old_count + added; // shouldn't have changed
-        }
+        int added = fp->count - old_count;
+        if (added <= 0) { e->expanded = 1; return; }
+        // Copy new entries out
+        memcpy(temp, &fp->entries[old_count], added * sizeof(FileEntry));
+        fp->count = old_count; // restore count
+        // Make room at insert_at
+        int insert_at = idx + 1;
+        memmove(&fp->entries[insert_at + added],
+                &fp->entries[insert_at],
+                (fp->count - insert_at) * sizeof(FileEntry));
+        // Copy new entries into position
+        memcpy(&fp->entries[insert_at], temp, added * sizeof(FileEntry));
+        fp->count += added;
         e->expanded = 1;
     }
 }
