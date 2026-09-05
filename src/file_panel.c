@@ -86,59 +86,100 @@ static int is_visible(FilePanel *fp, int idx) {
     return 1;
 }
 
+static int is_descendant_of(FileEntry *entries, int idx, int ancestor) {
+    int cur = entries[idx].parent_idx;
+    int depth = 0;
+    while (cur >= 0 && depth < 256) {
+        if (cur == ancestor) return 1;
+        cur = entries[cur].parent_idx;
+        depth++;
+    }
+    return 0;
+}
+
+static void collapse_dir(FilePanel *fp, int idx) {
+    FileEntry *e = &fp->entries[idx];
+    if (!e->is_dir || !e->expanded) return;
+
+    // Remove ALL descendants (not just direct children)
+    int remove_start = idx + 1;
+    int remove_count = 0;
+    for (int i = remove_start; i < fp->count; i++) {
+        if (is_descendant_of(fp->entries, i, idx))
+            remove_count++;
+        else
+            break;
+    }
+    if (remove_count > 0) {
+        memmove(&fp->entries[remove_start],
+                &fp->entries[remove_start + remove_count],
+                (fp->count - remove_start - remove_count) * sizeof(FileEntry));
+        fp->count -= remove_count;
+        // Fix all parent_idx references for shifted entries
+        for (int i = 0; i < fp->count; i++) {
+            int p = fp->entries[i].parent_idx;
+            if (p < 0) continue;
+            if (p >= remove_start && p < remove_start + remove_count) {
+                // Parent was removed — this shouldn't happen for properly-structured data
+                // but handle gracefully
+                fp->entries[i].parent_idx = -1;
+                fp->entries[i].depth = 0;
+            } else if (p >= remove_start + remove_count) {
+                fp->entries[i].parent_idx = p - remove_count;
+            }
+        }
+        if (fp->selected >= remove_start && fp->selected < remove_start + remove_count)
+            fp->selected = -1;
+        else if (fp->selected >= remove_start)
+            fp->selected -= remove_count;
+    }
+    e->expanded = 0;
+}
+
+static void expand_dir(FilePanel *fp, int idx) {
+    FileEntry *e = &fp->entries[idx];
+    if (!e->is_dir || e->expanded) return;
+
+    // Scan children into temp buffer
+    FileEntry temp[256];
+    int old_count = fp->count;
+    scan_dir(fp, e->full_path, e->depth + 1, idx);
+    int added = fp->count - old_count;
+    if (added <= 0) { e->expanded = 1; return; }
+
+    // Copy new entries to temp, restore count
+    memcpy(temp, &fp->entries[old_count], added * sizeof(FileEntry));
+    fp->count = old_count;
+
+    // Make room at insert_at
+    int insert_at = idx + 1;
+    memmove(&fp->entries[insert_at + added],
+            &fp->entries[insert_at],
+            (fp->count - insert_at) * sizeof(FileEntry));
+    fp->count += added;
+
+    // Fix parent_idx for entries that shifted right (skip new entries)
+    for (int i = 0; i < fp->count; i++) {
+        // Skip the new entry slots [insert_at, insert_at+added)
+        if (i >= insert_at && i < insert_at + added) continue;
+        int p = fp->entries[i].parent_idx;
+        if (p >= insert_at) {
+            fp->entries[i].parent_idx = p + added;
+        }
+    }
+
+    // Copy new entries into position (AFTER fixing shifted entries)
+    memcpy(&fp->entries[insert_at], temp, added * sizeof(FileEntry));
+    e->expanded = 1;
+}
+
 static void toggle_dir(FilePanel *fp, int idx) {
     FileEntry *e = &fp->entries[idx];
     if (!e->is_dir) return;
-
-    if (e->expanded) {
-        // Collapse: remove all descendants
-        int remove_start = idx + 1;
-        int remove_count = 0;
-        for (int i = remove_start; i < fp->count; i++) {
-            int cur = fp->entries[i].parent_idx;
-            int found = 0;
-            while (cur >= 0) {
-                if (cur == idx) { found = 1; break; }
-                cur = fp->entries[cur].parent_idx;
-            }
-            if (found) remove_count++;
-            else break;
-        }
-        if (remove_count > 0) {
-            memmove(&fp->entries[remove_start],
-                    &fp->entries[remove_start + remove_count],
-                    (fp->count - remove_start - remove_count) * sizeof(FileEntry));
-            fp->count -= remove_count;
-            if (fp->selected >= remove_start && fp->selected < remove_start + remove_count)
-                fp->selected = -1;
-            else if (fp->selected >= remove_start)
-                fp->selected -= remove_count;
-        }
-        e->expanded = 0;
-    } else {
-        // Expand: scan into temp buffer, then insert
-        FileEntry temp[256];
-        int temp_count = 0;
-        int saved_count = fp->count;
-        fp->count = 0; // trick scan_dir into using temp via our entries array
-        // Actually just scan normally — entries go at end
-        int old_count = saved_count;
-        scan_dir(fp, e->full_path, e->depth + 1, idx);
-        int added = fp->count - old_count;
-        if (added <= 0) { e->expanded = 1; return; }
-        // Copy new entries out
-        memcpy(temp, &fp->entries[old_count], added * sizeof(FileEntry));
-        fp->count = old_count; // restore count
-        // Make room at insert_at
-        int insert_at = idx + 1;
-        memmove(&fp->entries[insert_at + added],
-                &fp->entries[insert_at],
-                (fp->count - insert_at) * sizeof(FileEntry));
-        // Copy new entries into position
-        memcpy(&fp->entries[insert_at], temp, added * sizeof(FileEntry));
-        fp->count += added;
-        e->expanded = 1;
-    }
+    if (e->expanded)
+        collapse_dir(fp, idx);
+    else
+        expand_dir(fp, idx);
 }
 
 void fp_render(FilePanel *fp, float x, float y, float w, float h) {
