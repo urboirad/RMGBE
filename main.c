@@ -88,6 +88,7 @@ static void get_exe_dir(char *buf, int len) {
 }
 
 #ifdef _WIN32
+
 static int open_folder_dialog(char *out, int out_len) {
     const char *result = tinyfd_selectFolderDialog("Open Folder", NULL);
     if (!result) { out[0] = '\0'; return 0; }
@@ -113,6 +114,97 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
     out[out_len - 1] = '\0';
     return 1;
 }
+
+#else
+
+static int has_dialog_backend = -1; // -1 = unchecked
+
+static int check_dialog_backend(void) {
+    if (has_dialog_backend >= 0) return has_dialog_backend;
+    has_dialog_backend = 0;
+    FILE *p = popen("which zenity 2>/dev/null || which kdialog 2>/dev/null || which yad 2>/dev/null || which matedialog 2>/dev/null || which xdg-open 2>/dev/null", "r");
+    if (p) {
+        char buf[8];
+        if (fgets(buf, sizeof(buf), p))
+            has_dialog_backend = 1;
+        pclose(p);
+    }
+    // Also check if XDG portal is available via dbus
+    if (!has_dialog_backend) {
+        p = popen("which dbus-send 2>/dev/null && dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames 2>/dev/null | grep -q org.freedesktop.portal && echo yes", "r");
+        if (p) {
+            char buf[8];
+            if (fgets(buf, sizeof(buf), p))
+                has_dialog_backend = 1;
+            pclose(p);
+        }
+    }
+    return has_dialog_backend;
+}
+
+static int run_popen_dialog(const char *cmd, char *out, int out_len) {
+    FILE *p = popen(cmd, "r");
+    if (!p) return 0;
+    out[0] = '\0';
+    if (fgets(out, out_len, p)) {
+        size_t len = strlen(out);
+        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
+    }
+    int ok = pclose(p) == 0 && out[0] != '\0';
+    if (!ok) out[0] = '\0';
+    return ok;
+}
+
+static int open_folder_dialog(char *out, int out_len) {
+    if (!check_dialog_backend()) {
+        // No GUI dialog backend — just use current directory
+        if (getcwd(out, out_len)) return 1;
+        out[0] = '\0';
+        return 0;
+    }
+    // Try tinyfiledialogs first — it has better error handling
+    const char *result = tinyfd_selectFolderDialog("Open Folder", NULL);
+    if (result && result[0]) {
+        strncpy(out, result, out_len - 1);
+        out[out_len - 1] = '\0';
+        return 1;
+    }
+    out[0] = '\0';
+    return 0;
+}
+
+static int open_file_dialog(char *out, int out_len, const char *filter) {
+    (void)filter;
+    if (!check_dialog_backend()) {
+        out[0] = '\0';
+        return 0;
+    }
+    const char *result = tinyfd_openFileDialog("Open File", NULL, 0, NULL, NULL, 0);
+    if (result && result[0]) {
+        strncpy(out, result, out_len - 1);
+        out[out_len - 1] = '\0';
+        return 1;
+    }
+    out[0] = '\0';
+    return 0;
+}
+
+static int save_file_dialog(char *out, int out_len, const char *filter, const char *def_ext) {
+    (void)filter; (void)def_ext;
+    if (!check_dialog_backend()) {
+        out[0] = '\0';
+        return 0;
+    }
+    const char *result = tinyfd_saveFileDialog("Save As", NULL, 0, NULL, NULL);
+    if (result && result[0]) {
+        strncpy(out, result, out_len - 1);
+        out[out_len - 1] = '\0';
+        return 1;
+    }
+    out[0] = '\0';
+    return 0;
+}
+
 #endif
 
 // ---- Callbacks --------------------------------------------------------------
