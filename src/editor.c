@@ -258,6 +258,16 @@ void editor_scroll(Editor *e, float yoffset) {
     if (e->scroll_y < 0) e->scroll_y = 0;
 }
 
+static void ensure_cursor_visible(Editor *e) {
+    float ch = text_char_height();
+    float row = ch + 2.0f;
+    float cy = e->smooth.vis_y - e->scroll_y;
+    float vh = e->viewport_h > 0 ? e->viewport_h : 400.0f;
+    if (cy < 0) e->scroll_y += cy - row;
+    if (cy > vh - row*2) e->scroll_y += (cy - (vh - row*2));
+    if (e->scroll_y < 0) e->scroll_y = 0;
+}
+
 void editor_key(Editor *e, int key, int mods) {
     int ctrl = (mods & GLFW_MOD_CONTROL);
 
@@ -400,6 +410,13 @@ void editor_update(Editor *e, float dt) {
     float t = 1.0f - expf(-LERP_SPEED * dt);
     e->smooth.vis_x += (target_x - e->smooth.vis_x) * t;
     e->smooth.vis_y += (target_y - e->smooth.vis_y) * t;
+
+    // Only auto-scroll when cursor has actually moved (not during smooth lerp)
+    if (e->cursor_row != e->prev_cursor_row || e->cursor_col != e->prev_cursor_col) {
+        ensure_cursor_visible(e);
+        e->prev_cursor_row = e->cursor_row;
+        e->prev_cursor_col = e->cursor_col;
+    }
 }
 
 void editor_render(Editor *e, float x, float y, float w, float h) {
@@ -418,14 +435,8 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     float ch  = text_char_height();
     float row = ch + 2.0f;
 
-    // Make sure the cursor stays on screen
-    float cursor_screen_y = e->smooth.vis_y - e->scroll_y;
-    if (cursor_screen_y < 0)         e->scroll_y += cursor_screen_y - row;
-    if (cursor_screen_y > h - row*2) e->scroll_y += (cursor_screen_y - (h - row*2));
-    if (e->scroll_y < 0) e->scroll_y = 0;
-    float max_scroll = e->line_count * row - h;
-    if (max_scroll < 0) max_scroll = 0;
-    if (e->scroll_y > max_scroll) e->scroll_y = max_scroll;
+    // Cursor auto-scroll is handled in editor_update, not here
+    e->viewport_h = h;
 
     // Draw the cursor (thin line in insert mode, block in normal/visual)
     // vis_x already includes the gutter offset from editor_update()

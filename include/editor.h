@@ -30,6 +30,9 @@ typedef struct {
     struct SyntaxState *syntax_cache;  // cached syntax states at intervals
     int  syntax_cache_count;
     int  syntax_cache_dirty;
+    float viewport_h;  // last known viewport height (for cursor auto-scroll)
+    int prev_cursor_row;
+    int prev_cursor_col;
 } Editor;
 
 void editor_init(Editor *e);
