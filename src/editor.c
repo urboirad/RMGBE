@@ -213,6 +213,8 @@ void editor_paste(Editor *e) {
 
 // Convert a screen pixel position to a buffer offset.
 // Updates cursor_row/cursor_col to match. ex,ey is the top-left of the editor panel.
+static int skip_auto_scroll = 0;
+
 static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     float cw  = text_char_width();
     float ch  = text_char_height();
@@ -231,6 +233,7 @@ static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     // Snap smooth position so ensure_cursor_visible uses correct coords
     e->smooth.vis_x = GUTTER_W(cw) + clicked_col * cw;
     e->smooth.vis_y = clicked_row * row;
+    skip_auto_scroll = 1; // don't auto-scroll after mouse click
     return offset_of(e, clicked_row, clicked_col);
 }
 
@@ -266,7 +269,7 @@ static void ensure_cursor_visible(Editor *e) {
     float row = ch + 2.0f;
     float cy = e->smooth.vis_y - e->scroll_y;
     float vh = e->viewport_h > 0 ? e->viewport_h : 400.0f;
-    if (cy < 0) e->scroll_y += cy - row;
+    if (cy < 0) e->scroll_y -= (row - cy);
     if (cy > vh - row*2) e->scroll_y += (cy - (vh - row*2));
     if (e->scroll_y < 0) e->scroll_y = 0;
 }
@@ -415,11 +418,12 @@ void editor_update(Editor *e, float dt) {
     e->smooth.vis_y += (target_y - e->smooth.vis_y) * t;
 
     // Only auto-scroll when cursor has actually moved (not during smooth lerp)
-    if (e->cursor_row != e->prev_cursor_row || e->cursor_col != e->prev_cursor_col) {
+    if (!skip_auto_scroll && (e->cursor_row != e->prev_cursor_row || e->cursor_col != e->prev_cursor_col)) {
         ensure_cursor_visible(e);
-        e->prev_cursor_row = e->cursor_row;
-        e->prev_cursor_col = e->cursor_col;
     }
+    e->prev_cursor_row = e->cursor_row;
+    e->prev_cursor_col = e->cursor_col;
+    skip_auto_scroll = 0;
 }
 
 void editor_render(Editor *e, float x, float y, float w, float h) {
