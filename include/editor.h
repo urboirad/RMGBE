@@ -31,8 +31,7 @@ typedef struct {
     int  syntax_cache_count;
     int  syntax_cache_dirty;
     float viewport_h;  // last known viewport height (for cursor auto-scroll)
-    int prev_cursor_row;
-    int prev_cursor_col;
+    int needs_scroll_to_cursor;  // set by key/char/click, cleared after scroll
 } Editor;
 
 void editor_init(Editor *e);

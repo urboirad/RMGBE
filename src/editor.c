@@ -213,7 +213,6 @@ void editor_paste(Editor *e) {
 
 // Convert a screen pixel position to a buffer offset.
 // Updates cursor_row/cursor_col to match. ex,ey is the top-left of the editor panel.
-static int skip_auto_scroll = 0;
 
 static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     float cw  = text_char_width();
@@ -233,7 +232,7 @@ static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     // Snap smooth position so ensure_cursor_visible uses correct coords
     e->smooth.vis_x = GUTTER_W(cw) + clicked_col * cw;
     e->smooth.vis_y = clicked_row * row;
-    skip_auto_scroll = 1; // don't auto-scroll after mouse click
+    e->needs_scroll_to_cursor = 1;
     return offset_of(e, clicked_row, clicked_col);
 }
 
@@ -257,14 +256,11 @@ void editor_mouse_release(Editor *e) {
     e->selecting = 0;
 }
 
-static void ensure_cursor_visible(Editor *e);
-
 void editor_scroll(Editor *e, float yoffset) {
     float ch = text_char_height();
     float row = ch + 2.0f;
     e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
-    ensure_cursor_visible(e);
 }
 
 static void ensure_cursor_visible(Editor *e) {
@@ -279,17 +275,19 @@ static void ensure_cursor_visible(Editor *e) {
 
 void editor_key(Editor *e, int key, int mods) {
     int ctrl = (mods & GLFW_MOD_CONTROL);
+    int prev_row = e->cursor_row;
+    int prev_col = e->cursor_col;
 
     // Save
-    if (ctrl && key == GLFW_KEY_S) { editor_save_file(e); return; }
+    if (ctrl && key == GLFW_KEY_S) { editor_save_file(e); goto key_done; }
     // Copy & Paste
-    if (ctrl && key == GLFW_KEY_C) { editor_copy(e); return; }
-    if (ctrl && key == GLFW_KEY_V) { editor_paste(e); return; }
-    if (ctrl && key == GLFW_KEY_A) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); return; }
+    if (ctrl && key == GLFW_KEY_C) { editor_copy(e); goto key_done; }
+    if (ctrl && key == GLFW_KEY_V) { editor_paste(e); goto key_done; }
+    if (ctrl && key == GLFW_KEY_A) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); goto key_done; }
 
     if (e->mode == MODE_INSERT) {
         int cur = e->gb.gap_start;
-        if (key == GLFW_KEY_ESCAPE) { e->mode = MODE_NORMAL; return; }
+        if (key == GLFW_KEY_ESCAPE) { e->mode = MODE_NORMAL; goto key_done; }
         if (key == GLFW_KEY_BACKSPACE) {
             int prev_row_len = 0;
             if (e->cursor_col == 0 && e->cursor_row > 0)
@@ -300,31 +298,31 @@ void editor_key(Editor *e, int key, int mods) {
                 e->cursor_row--;
                 e->cursor_col = prev_row_len;
             }
-            return;
+            goto key_done;
         }
         if (key == GLFW_KEY_ENTER) {
             insert_char(&e->gb, '\n'); e->dirty = 1; e->lines_dirty = 1;
-            e->cursor_row++; e->cursor_col = 0; return;
+            e->cursor_row++; e->cursor_col = 0; goto key_done;
         }
-        if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, cur-1); } return; }
-        if (key == GLFW_KEY_RIGHT) { e->cursor_col++; move_cursor(&e->gb, cur+1); return; }
-        if (key == GLFW_KEY_UP)    { if (e->cursor_row > 0) { e->cursor_row--; int maxc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > maxc) e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
-        if (key == GLFW_KEY_DOWN)  { int rows = count_rows(e); if (e->cursor_row < rows-1) { e->cursor_row++; int maxc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > maxc) e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
-        return;
+        if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, cur-1); } goto key_done; }
+        if (key == GLFW_KEY_RIGHT) { e->cursor_col++; move_cursor(&e->gb, cur+1); goto key_done; }
+        if (key == GLFW_KEY_UP)    { if (e->cursor_row > 0) { e->cursor_row--; int maxc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > maxc) e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
+        if (key == GLFW_KEY_DOWN)  { int rows = count_rows(e); if (e->cursor_row < rows-1) { e->cursor_row++; int maxc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > maxc) e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
+        goto key_done;
     }
 
     // Visual mode keys
     if (e->mode == MODE_VISUAL) {
         int rows = count_rows(e);
         int maxc = logical_len_of_row(e, e->cursor_row);
-        if (key == GLFW_KEY_ESCAPE) { e->mode = MODE_NORMAL; return; }
+        if (key == GLFW_KEY_ESCAPE) { e->mode = MODE_NORMAL; goto key_done; }
         if (key == GLFW_KEY_LEFT) {
             if (e->cursor_col > 0) {
                 e->cursor_col--;
                 move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col));
                 e->selection_end = offset_of(e, e->cursor_row, e->cursor_col);
             }
-            return;
+            goto key_done;
         }
         if (key == GLFW_KEY_RIGHT) {
             if (e->cursor_col < maxc) {
@@ -332,7 +330,7 @@ void editor_key(Editor *e, int key, int mods) {
                 move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col));
                 e->selection_end = offset_of(e, e->cursor_row, e->cursor_col);
             }
-            return;
+            goto key_done;
         }
         if (key == GLFW_KEY_UP) {
             if (e->cursor_row > 0) {
@@ -342,7 +340,7 @@ void editor_key(Editor *e, int key, int mods) {
                 move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col));
                 e->selection_end = offset_of(e, e->cursor_row, e->cursor_col);
             }
-            return;
+            goto key_done;
         }
         if (key == GLFW_KEY_DOWN) {
             if (e->cursor_row < rows - 1) {
@@ -352,29 +350,29 @@ void editor_key(Editor *e, int key, int mods) {
                 move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col));
                 e->selection_end = offset_of(e, e->cursor_row, e->cursor_col);
             }
-            return;
+            goto key_done;
         }
-        return;
+        goto key_done;
     }
 
     // Normal mode keys
     if (e->mode == MODE_NORMAL) {
         int rows = count_rows(e);
         int maxc = logical_len_of_row(e, e->cursor_row);
-        if (key == GLFW_KEY_I || key == GLFW_KEY_A) { e->mode = MODE_INSERT; e->key_handled = 1; return; }
+        if (key == GLFW_KEY_I || key == GLFW_KEY_A) { e->mode = MODE_INSERT; e->key_handled = 1; goto key_done; }
         if (key == GLFW_KEY_V) { 
             e->mode = MODE_VISUAL; 
             e->selection_start = offset_of(e, e->cursor_row, e->cursor_col);
             e->selection_end = e->selection_start;
             
-            return; 
+            goto key_done; 
         }
-        if (key == GLFW_KEY_H) { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } return; }
-        if (key == GLFW_KEY_L) { if (e->cursor_col < maxc) { e->cursor_col++; move_cursor(&e->gb, e->gb.gap_start + 1); } return; }
-        if (key == GLFW_KEY_K) { if (e->cursor_row > 0) { e->cursor_row--; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
-        if (key == GLFW_KEY_J) { if (e->cursor_row < rows - 1) { e->cursor_row++; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
-        if (key == GLFW_KEY_0) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); return; }
-        if (key == GLFW_KEY_4 && (mods & GLFW_MOD_SHIFT)) { e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, maxc)); return; }
+        if (key == GLFW_KEY_H) { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } goto key_done; }
+        if (key == GLFW_KEY_L) { if (e->cursor_col < maxc) { e->cursor_col++; move_cursor(&e->gb, e->gb.gap_start + 1); } goto key_done; }
+        if (key == GLFW_KEY_K) { if (e->cursor_row > 0) { e->cursor_row--; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
+        if (key == GLFW_KEY_J) { if (e->cursor_row < rows - 1) { e->cursor_row++; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
+        if (key == GLFW_KEY_0) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); goto key_done; }
+        if (key == GLFW_KEY_4 && (mods & GLFW_MOD_SHIFT)) { e->cursor_col = maxc; move_cursor(&e->gb, offset_of(e, e->cursor_row, maxc)); goto key_done; }
         if (key == GLFW_KEY_X) {
             GapBuffer *gb = &e->gb;
             int n = gb->gap_start + (gb->total_size - gb->gap_end);
@@ -383,7 +381,7 @@ void editor_key(Editor *e, int key, int mods) {
                 e->dirty = 1;
                 e->lines_dirty = 1;
             }
-            return;
+            goto key_done;
         }
         if (key == GLFW_KEY_O) {
             int eol = offset_of(e, e->cursor_row, logical_len_of_row(e, e->cursor_row));
@@ -392,13 +390,17 @@ void editor_key(Editor *e, int key, int mods) {
             e->cursor_row++; e->cursor_col = 0;
             e->mode = MODE_INSERT;
             e->key_handled = 1;
-            return;
+            goto key_done;
         }
-        if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } return; }
-        if (key == GLFW_KEY_RIGHT) { if (e->cursor_col < maxc) { e->cursor_col++; move_cursor(&e->gb, e->gb.gap_start + 1); } return; }
-        if (key == GLFW_KEY_UP)    { if (e->cursor_row > 0) { e->cursor_row--; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
-        if (key == GLFW_KEY_DOWN)  { if (e->cursor_row < rows - 1) { e->cursor_row++; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } return; }
+        if (key == GLFW_KEY_LEFT)  { if (e->cursor_col > 0) { e->cursor_col--; move_cursor(&e->gb, e->gb.gap_start - 1); } goto key_done; }
+        if (key == GLFW_KEY_RIGHT) { if (e->cursor_col < maxc) { e->cursor_col++; move_cursor(&e->gb, e->gb.gap_start + 1); } goto key_done; }
+        if (key == GLFW_KEY_UP)    { if (e->cursor_row > 0) { e->cursor_row--; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
+        if (key == GLFW_KEY_DOWN)  { if (e->cursor_row < rows - 1) { e->cursor_row++; int mc = logical_len_of_row(e, e->cursor_row); if (e->cursor_col > mc) e->cursor_col = mc; move_cursor(&e->gb, offset_of(e, e->cursor_row, e->cursor_col)); } goto key_done; }
     }
+
+key_done:
+    if (e->cursor_row != prev_row || e->cursor_col != prev_col)
+        e->needs_scroll_to_cursor = 1;
 }
 
 void editor_char(Editor *e, unsigned int cp) {
@@ -409,6 +411,7 @@ void editor_char(Editor *e, unsigned int cp) {
     e->cursor_col++;
     e->dirty = 1;
     e->lines_dirty = 1;
+    e->needs_scroll_to_cursor = 1;
 }
 
 void editor_update(Editor *e, float dt) {
@@ -420,13 +423,10 @@ void editor_update(Editor *e, float dt) {
     e->smooth.vis_x += (target_x - e->smooth.vis_x) * t;
     e->smooth.vis_y += (target_y - e->smooth.vis_y) * t;
 
-    // Only auto-scroll when cursor has actually moved (not during smooth lerp)
-    if (!skip_auto_scroll && (e->cursor_row != e->prev_cursor_row || e->cursor_col != e->prev_cursor_col)) {
+    if (e->needs_scroll_to_cursor) {
         ensure_cursor_visible(e);
+        e->needs_scroll_to_cursor = 0;
     }
-    e->prev_cursor_row = e->cursor_row;
-    e->prev_cursor_col = e->cursor_col;
-    skip_auto_scroll = 0;
 }
 
 void editor_render(Editor *e, float x, float y, float w, float h) {
