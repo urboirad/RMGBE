@@ -257,11 +257,14 @@ void editor_mouse_release(Editor *e) {
     e->selecting = 0;
 }
 
+static void ensure_cursor_visible(Editor *e);
+
 void editor_scroll(Editor *e, float yoffset) {
     float ch = text_char_height();
     float row = ch + 2.0f;
     e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
+    ensure_cursor_visible(e);
 }
 
 static void ensure_cursor_visible(Editor *e) {
