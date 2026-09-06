@@ -228,6 +228,9 @@ static int pixel_to_offset(Editor *e, float px, float py, float ex, float ey) {
     if (clicked_col > maxc) clicked_col = maxc;
     e->cursor_row = clicked_row;
     e->cursor_col = clicked_col;
+    // Snap smooth position so ensure_cursor_visible uses correct coords
+    e->smooth.vis_x = GUTTER_W(cw) + clicked_col * cw;
+    e->smooth.vis_y = clicked_row * row;
     return offset_of(e, clicked_row, clicked_col);
 }
 
