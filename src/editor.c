@@ -261,6 +261,8 @@ void editor_scroll(Editor *e, float yoffset) {
     float row = ch + 2.0f;
     e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
+    e->smooth.vis_x = GUTTER_W(text_char_width()) + e->cursor_col * text_char_width();
+    e->smooth.vis_y = e->cursor_row * row;
 }
 
 static void ensure_cursor_visible(Editor *e) {
