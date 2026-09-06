@@ -453,9 +453,9 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     e->viewport_h = h;
 
     // Draw the cursor (thin line in insert mode, block in normal/visual)
-    // vis_x already includes the gutter offset from editor_update()
+    // Use exact cursor_row position to stay aligned with text rendering
     float cx = x + e->smooth.vis_x;
-    float cy = y + e->smooth.vis_y - e->scroll_y + (row - ch) * 0.5f;
+    float cy = y + e->cursor_row * row - e->scroll_y + (row - ch) * 0.5f;
     if (e->mode == MODE_INSERT)
         draw_rect(cx, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
     else if (e->mode == MODE_NORMAL)
