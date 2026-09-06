@@ -426,6 +426,8 @@ void editor_update(Editor *e, float dt) {
     e->smooth.vis_y += (target_y - e->smooth.vis_y) * t;
 
     if (e->needs_scroll_to_cursor) {
+        e->smooth.vis_x = target_x;
+        e->smooth.vis_y = target_y;
         ensure_cursor_visible(e);
         e->needs_scroll_to_cursor = 0;
     }
@@ -477,7 +479,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     // Find the first visible line
     int first_vis = 0;
     if (row > 0) {
-        first_vis = (int)((e->scroll_y - y) / row);
+        first_vis = (int)(e->scroll_y / row);
         if (first_vis < 0) first_vis = 0;
         if (first_vis >= e->line_count) first_vis = e->line_count - 1;
     }
