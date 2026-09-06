@@ -256,9 +256,6 @@ void editor_scroll(Editor *e, float yoffset) {
     float row = ch + 2.0f;
     e->scroll_y -= yoffset * 1.0f * row;
     if (e->scroll_y < 0) e->scroll_y = 0;
-    float max_scroll = e->line_count * row - 200.0f;
-    if (max_scroll < 0) max_scroll = 0;
-    if (e->scroll_y > max_scroll) e->scroll_y = max_scroll;
 }
 
 void editor_key(Editor *e, int key, int mods) {
@@ -426,6 +423,9 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     if (cursor_screen_y < 0)         e->scroll_y += cursor_screen_y - row;
     if (cursor_screen_y > h - row*2) e->scroll_y += (cursor_screen_y - (h - row*2));
     if (e->scroll_y < 0) e->scroll_y = 0;
+    float max_scroll = e->line_count * row - h;
+    if (max_scroll < 0) max_scroll = 0;
+    if (e->scroll_y > max_scroll) e->scroll_y = max_scroll;
 
     // Draw the cursor (thin line in insert mode, block in normal/visual)
     // vis_x already includes the gutter offset from editor_update()
