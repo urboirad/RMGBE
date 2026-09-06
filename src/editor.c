@@ -468,7 +468,6 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     int n = gb_total_logical(gb);
     char line[EDITOR_LINE_LEN];
     float gutter = GUTTER_W(cw);
-    float ty  = y - e->scroll_y;
 
     int sel_start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
     int sel_end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
@@ -483,6 +482,8 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
         if (first_vis < 0) first_vis = 0;
         if (first_vis >= e->line_count) first_vis = e->line_count - 1;
     }
+
+    float ty  = y - e->scroll_y + first_vis * row;
 
     // Restore syntax state from nearest cache point
     SyntaxState syntax_state = {0};
