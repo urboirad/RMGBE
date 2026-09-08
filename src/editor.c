@@ -453,8 +453,9 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     e->viewport_h = h;
 
     // Draw the cursor (thin line in insert mode, block in normal/visual)
-    // Use exact cursor_row position to stay aligned with text rendering
-    float cx = x + e->smooth.vis_x;
+    // Use exact cursor position to stay aligned with text rendering
+    float gutter = GUTTER_W(cw);
+    float cx = x + gutter + e->cursor_col * cw;
     float cy = y + e->cursor_row * row - e->scroll_y + (row - ch) * 0.5f;
     if (e->mode == MODE_INSERT)
         draw_rect(cx, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
@@ -467,7 +468,6 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     GapBuffer *gb = &e->gb;
     int n = gb_total_logical(gb);
     char line[EDITOR_LINE_LEN];
-    float gutter = GUTTER_W(cw);
 
     int sel_start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
     int sel_end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
