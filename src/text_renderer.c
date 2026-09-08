@@ -191,3 +191,16 @@ void text_renderer_end(void) {
     pop_ortho();
     glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND);
 }
+
+float text_measure_len(const char *text, int len) {
+    float cx = 0, cy = 0;
+    const char *end = text + len;
+    while (text < end) {
+        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
+            stbtt_aligned_quad q;
+            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &cy, &q, 1);
+        }
+        ++text;
+    }
+    return cx;
+}

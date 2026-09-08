@@ -452,17 +452,8 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     // Cursor auto-scroll is handled in editor_update, not here
     e->viewport_h = h;
 
-    // Draw the cursor (thin line in insert mode, block in normal/visual)
-    // Use exact cursor position to stay aligned with text rendering
     float gutter = GUTTER_W(cw);
-    float cx = x + gutter + e->cursor_col * cw;
     float cy = y + e->cursor_row * row - e->scroll_y + (row - ch) * 0.5f;
-    if (e->mode == MODE_INSERT)
-        draw_rect(cx, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
-    else if (e->mode == MODE_NORMAL)
-        draw_rect(cx, cy, cw, ch, COLOR_CURSOR_HIGHLIGHT, 0.45f);
-    else // VISUAL
-        draw_rect(cx, cy, cw, ch, COLOR_CURSOR_HIGHLIGHT, 0.45f);
 
     // Render text line by line
     GapBuffer *gb = &e->gb;
@@ -551,6 +542,17 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
             char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", li + 1);
             float lnx = x + 4;
             batch_text(lnum, &lnx, ty + ch * 0.85f, COLOR_TEXT);
+
+            // Draw cursor on its line, using same stbtt measurement as text
+            if (li == e->cursor_row) {
+                text_renderer_end();
+                float cursor_x = x + gutter + text_measure_len(line, e->cursor_col);
+                if (e->mode == MODE_INSERT)
+                    draw_rect(cursor_x, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
+                else
+                    draw_rect(cursor_x, cy, cw, ch, COLOR_CURSOR_HIGHLIGHT, 0.45f);
+                text_renderer_begin();
+            }
         }
         ty += row;
     }

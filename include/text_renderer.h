@@ -18,5 +18,6 @@ void  text_renderer_begin(void);
 void  batch_text(const char *text, float *x, float y, float r, float g, float b);
 void  batch_text_len(const char *text, int len, float *x, float y, float r, float g, float b);
 void  text_renderer_end(void);
+float text_measure_len(const char *text, int len);
 
 #endif
