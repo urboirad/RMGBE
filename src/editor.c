@@ -466,6 +466,24 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     if (e->lines_dirty) editor_rebuild_lines(e);
     if (e->syntax_cache_dirty) editor_rebuild_syntax_cache(e);
 
+    // Build cursor line and draw cursor before text batch
+    if (e->cursor_row >= 0 && e->cursor_row < e->line_count) {
+        int clstart = e->line_offsets[e->cursor_row];
+        int clend = (e->cursor_row + 1 < e->line_count) ? e->line_offsets[e->cursor_row + 1] : n;
+        int cllen = 0;
+        for (int k = clstart; k < clend && k < n; k++) {
+            char c = gb_char_logical(gb, k);
+            if (c == '\n') break;
+            if (cllen < EDITOR_LINE_LEN - 1) line[cllen++] = c;
+        }
+        line[cllen] = '\0';
+        float cursor_x = x + gutter + text_measure_len(line, e->cursor_col);
+        if (e->mode == MODE_INSERT)
+            draw_rect(cursor_x, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
+        else
+            draw_rect(cursor_x, cy, cw, ch, COLOR_CURSOR_HIGHLIGHT, 0.45f);
+    }
+
     // Find the first visible line
     int first_vis = 0;
     if (row > 0) {
@@ -542,17 +560,6 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
             char lnum[16]; snprintf(lnum, sizeof(lnum), "%4d", li + 1);
             float lnx = x + 4;
             batch_text(lnum, &lnx, ty + ch * 0.85f, COLOR_TEXT);
-
-            // Draw cursor on its line, using same stbtt measurement as text
-            if (li == e->cursor_row) {
-                text_renderer_end();
-                float cursor_x = x + gutter + text_measure_len(line, e->cursor_col);
-                if (e->mode == MODE_INSERT)
-                    draw_rect(cursor_x, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
-                else
-                    draw_rect(cursor_x, cy, cw, ch, COLOR_CURSOR_HIGHLIGHT, 0.45f);
-                text_renderer_begin();
-            }
         }
         ty += row;
     }
