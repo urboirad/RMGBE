@@ -127,6 +127,29 @@ void editor_save_file(Editor *e) {
     e->dirty = 0;
 }
 
+void editor_new_file(Editor *e) {
+    if (e->gb.buffer) free(e->gb.buffer);
+    init_buffer(&e->gb, 4096);
+    e->filepath[0] = '\0';
+    e->cursor_col = 0;
+    e->cursor_row = 0;
+    e->scroll_y = 0;
+    e->smooth.vis_x = 0;
+    e->smooth.vis_y = 0;
+    e->dirty = 0;
+    e->selecting = 0;
+    e->selection_start = 0;
+    e->selection_end = 0;
+    e->lines_dirty = 1;
+    e->needs_scroll_to_cursor = 1;
+}
+
+void editor_save_file_as(Editor *e, const char *path) {
+    strncpy(e->filepath, path, sizeof(e->filepath) - 1);
+    e->filepath[sizeof(e->filepath) - 1] = '\0';
+    editor_save_file(e);
+}
+
 static void editor_rebuild_lines(Editor *e);
 
 // Return buffer offset for (row, col)
@@ -280,6 +303,8 @@ void editor_key(Editor *e, int key, int mods) {
     int prev_row = e->cursor_row;
     int prev_col = e->cursor_col;
 
+    // New file
+    if (ctrl && key == GLFW_KEY_N) { editor_new_file(e); goto key_done; }
     // Save
     if (ctrl && key == GLFW_KEY_S) { editor_save_file(e); goto key_done; }
     // Copy & Paste

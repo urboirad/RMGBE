@@ -256,7 +256,16 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
         if (key == GLFW_KEY_TAB && (mods & GLFW_MOD_CONTROL)) {
             g_focus ^= 1; return;
         }
-        if (g_focus == 0) editor_key(&g_editor, key, mods);
+        if (g_focus == 0) {
+            // Ctrl+S: Save As if untitled, otherwise normal save
+            if ((mods & GLFW_MOD_CONTROL) && key == GLFW_KEY_S && !g_editor.filepath[0]) {
+                char path[512] = "";
+                if (save_file_dialog(path, sizeof(path), NULL, NULL))
+                    editor_save_file_as(&g_editor, path);
+            } else {
+                editor_key(&g_editor, key, mods);
+            }
+        }
         else              term_key_input(&g_term, key);
     }
 }
@@ -418,22 +427,32 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
 
     // Toolbar area
     if (my < toolbar_h) {
-        if (mx >= 8 && mx <= 120) {
+        if (mx >= 8 && mx <= 88) {
+            editor_new_file(&g_editor);
+        }
+        if (mx >= 96 && mx <= 208) {
             char path[512] = "";
             if (open_folder_dialog(path, sizeof(path)))
                 fp_open_dir(&g_fp, path);
         }
-        if (mx >= 98 && mx <= 224) {
+        if (mx >= 216 && mx <= 312) {
             char path[512] = "";
             if (open_file_dialog(path, sizeof(path),
                                  "Source Files (*.c;*.h;*.cpp;*.txt)\0*.c;*.h;*.cpp;*.txt\0All Files (*.*)\0*.*\0"))
                 editor_open_file(&g_editor, path);
         }
-        if (mx >= 188 && mx <= 292)
-            editor_save_file(&g_editor);
-        if (mx >= 300 && mx <= 400)
+        if (mx >= 320 && mx <= 380) {
+            if (!g_editor.filepath[0]) {
+                char path[512] = "";
+                if (save_file_dialog(path, sizeof(path), NULL, NULL))
+                    editor_save_file_as(&g_editor, path);
+            } else {
+                editor_save_file(&g_editor);
+            }
+        }
+        if (mx >= 390 && mx <= 460)
             g_theme_open = 1;
-        if (mx >= 408 && mx <= 468)
+        if (mx >= 468 && mx <= 528)
             g_about_open = 1;
         return;
     }
@@ -481,13 +500,14 @@ static void draw_toolbar(float w) {
     draw_rect(0, 0, w, 32.0f, COLOR_TOOLBAR, 1.0f);
 
     struct { float x; float bw; const char *label; } btns[] = {
-        {8,   112.0f, "Open Folder"},
-        {128, 96.0f,  "Open File"},
-        {232, 60.0f,  "Save"},
-        {300, 70.0f, "Theme"},
-        {380, 60.0f,  "About"},
+        {8,   80.0f,  "New File"},
+        {96,  112.0f, "Open Folder"},
+        {216, 96.0f,  "Open File"},
+        {320, 60.0f,  "Save"},
+        {390, 70.0f,  "Theme"},
+        {468, 60.0f,  "About"},
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         draw_rect(btns[i].x, 4, btns[i].bw, 24.0f, COLOR_BUTTON, 0.5f);
         draw_text(btns[i].label, btns[i].x + 8, 20.0f, 1.0f, 1.0f, 1.0f);
     }

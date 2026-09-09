@@ -38,6 +38,8 @@ void editor_init(Editor *e);
 void editor_free(Editor *e);
 void editor_open_file(Editor *e, const char *path);
 void editor_save_file(Editor *e);
+void editor_save_file_as(Editor *e, const char *path);
+void editor_new_file(Editor *e);
 void editor_key(Editor *e, int key, int mods);
 void editor_char(Editor *e, unsigned int codepoint);
 void editor_update(Editor *e, float dt);
