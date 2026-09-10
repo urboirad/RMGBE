@@ -661,9 +661,7 @@ int main(void) {
 
     term_init(&g_term);
 
-    char exe_dir[512];
-    get_exe_dir(exe_dir, sizeof(exe_dir));
-    startup_audio_play(exe_dir);
+    startup_audio_play(NULL);
 
     glfwSetKeyCallback(win, cb_key);
     glfwSetCharCallback(win, cb_char);

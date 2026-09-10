@@ -27,23 +27,17 @@ static void CALLBACK wave_out_proc(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance
 }
 
 void startup_audio_play(const char *exe_dir) {
+    (void)exe_dir;
     if (g_playing) return;
 
-    char path[1024];
-    snprintf(path, sizeof(path), "%s/assets/rmgbe_startup.mp3", exe_dir);
-
-    FILE *f = fopen(path, "rb");
-    if (!f) return;
-
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (file_size <= 0) { fclose(f); return; }
-
-    unsigned char *mp3_buf = malloc(file_size);
-    if (!mp3_buf) { fclose(f); return; }
-    fread(mp3_buf, 1, file_size, f);
-    fclose(f);
+    HMODULE hMod = GetModuleHandle(NULL);
+    HRSRC hRes = FindResource(hMod, MAKEINTRESOURCE(2), RT_RCDATA);
+    if (!hRes) return;
+    HGLOBAL hData = LoadResource(hMod, hRes);
+    if (!hData) return;
+    DWORD size = SizeofResource(hMod, hRes);
+    const unsigned char *mp3_buf = (const unsigned char *)LockResource(hData);
+    if (!mp3_buf || size == 0) return;
 
     mp3dec_t dec;
     mp3dec_frame_info_t info;
@@ -53,9 +47,9 @@ void startup_audio_play(const char *exe_dir) {
     short *all_samples = NULL;
     int pos = 0;
 
-    while (pos < file_size) {
+    while ((unsigned)pos < size) {
         short pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
-        int samples = mp3dec_decode_frame(&dec, mp3_buf + pos, (int)(file_size - pos), pcm, &info);
+        int samples = mp3dec_decode_frame(&dec, mp3_buf + pos, (int)(size - pos), pcm, &info);
         pos += info.frame_bytes;
         if (samples <= 0) continue;
 
@@ -65,7 +59,6 @@ void startup_audio_play(const char *exe_dir) {
         memcpy(all_samples + total_alloc / sizeof(short), pcm, samples * info.channels * sizeof(short));
         total_alloc += samples * info.channels * sizeof(short);
     }
-    free(mp3_buf);
 
     if (!all_samples || total_alloc == 0) { free(all_samples); return; }
 
