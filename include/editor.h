@@ -8,6 +8,28 @@
 #define EDITOR_LINE_LEN  1024
 #define SYNTAX_CACHE_INTERVAL 64
 
+#define UNDO_MAX_TEXT 4096
+
+typedef enum {
+    UNDO_INSERT,
+    UNDO_DELETE,
+} UndoType;
+
+typedef struct {
+    UndoType type;
+    int      pos;       // gap_start before the operation (buffer offset)
+    int      len;       // length of text involved
+    char     text[UNDO_MAX_TEXT];
+    int      cursor_row;
+    int      cursor_col;
+} UndoEntry;
+
+typedef struct {
+    UndoEntry *entries;
+    int        count;
+    int        cap;
+} UndoStack;
+
 typedef struct {
     GapBuffer      gb;
     EditorMode     mode;
@@ -32,6 +54,8 @@ typedef struct {
     int  syntax_cache_dirty;
     float viewport_h;  // last known viewport height (for cursor auto-scroll)
     int needs_scroll_to_cursor;  // set by key/char/click, cleared after scroll
+    UndoStack undo;
+    UndoStack redo;
 } Editor;
 
 void editor_init(Editor *e);
@@ -48,5 +72,7 @@ void editor_mouse_press(Editor *e, float px, float py, float ex, float ey);
 void editor_mouse_move(Editor *e, float px, float py, float ex, float ey);
 void editor_mouse_release(Editor *e);
 void editor_scroll(Editor *e, float yoffset);
+void editor_undo(Editor *e);
+void editor_redo(Editor *e);
 
 #endif

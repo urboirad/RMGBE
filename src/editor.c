@@ -12,6 +12,40 @@
 #define LERP_SPEED 18.0f
 #define GUTTER_W(cw) (4.0f + 4.0f * (cw) + 8.0f)
 
+// ---- Undo/Redo ---------------------------------------------------------------
+
+static void undo_free_stack(UndoStack *s) {
+    for (int i = 0; i < s->count; i++)
+        free(s->entries[i].text);
+    free(s->entries);
+    s->entries = NULL;
+    s->count = s->cap = 0;
+}
+
+static void undo_push(UndoStack *stack, UndoType type, int pos, const char *text, int len, Editor *e) {
+    if (len <= 0 || len >= UNDO_MAX_TEXT) return;
+    if (stack->count == stack->cap) {
+        stack->cap = stack->cap ? stack->cap * 2 : 64;
+        stack->entries = realloc(stack->entries, stack->cap * sizeof(UndoEntry));
+    }
+    UndoEntry *ue = &stack->entries[stack->count++];
+    ue->type = type;
+    ue->pos = pos;
+    ue->len = len;
+    memcpy(ue->text, text, len);
+    ue->text[len] = '\0';
+    ue->cursor_row = e->cursor_row;
+    ue->cursor_col = e->cursor_col;
+}
+
+static void undo_clear(UndoStack *s) {
+    undo_free_stack(s);
+}
+
+static void undo_clear_redo(Editor *e) {
+    undo_clear(&e->redo);
+}
+
 void editor_init(Editor *e) {
     memset(e, 0, sizeof(*e));
     init_buffer(&e->gb, 4096);
@@ -23,12 +57,18 @@ void editor_init(Editor *e) {
     e->line_offsets[0] = 0;
     e->line_count = 1;
     e->lines_dirty = 1;
+    e->undo.entries = NULL;
+    e->undo.count = e->undo.cap = 0;
+    e->redo.entries = NULL;
+    e->redo.count = e->redo.cap = 0;
 }
 
 void editor_free(Editor *e) {
     if (e->gb.buffer) free(e->gb.buffer);
     free(e->line_offsets);
     free(e->syntax_cache);
+    undo_free_stack(&e->undo);
+    undo_free_stack(&e->redo);
 }
 
 static char gb_char_logical(GapBuffer *gb, int pos) {
@@ -114,6 +154,8 @@ void editor_open_file(Editor *e, const char *path) {
     e->smooth.vis_y = 0;
     e->smooth.x = e->smooth.y = 0;
     e->dirty = 0;
+    undo_clear(&e->undo);
+    undo_clear(&e->redo);
 }
 
 void editor_save_file(Editor *e) {
@@ -142,12 +184,105 @@ void editor_new_file(Editor *e) {
     e->selection_end = 0;
     e->lines_dirty = 1;
     e->needs_scroll_to_cursor = 1;
+    undo_clear(&e->undo);
+    undo_clear(&e->redo);
 }
 
 void editor_save_file_as(Editor *e, const char *path) {
     strncpy(e->filepath, path, sizeof(e->filepath) - 1);
     e->filepath[sizeof(e->filepath) - 1] = '\0';
     editor_save_file(e);
+}
+
+void editor_undo(Editor *e) {
+    if (e->undo.count == 0) return;
+    UndoEntry ue = e->undo.entries[e->undo.count - 1];
+    e->undo.count--;
+
+    if (ue.type == UNDO_INSERT) {
+        // Undo insert = delete the inserted text
+        move_cursor(&e->gb, ue.pos);
+        for (int i = 0; i < ue.len; i++)
+            delete_char(&e->gb);
+    } else {
+        // Undo delete = re-insert the deleted text
+        move_cursor(&e->gb, ue.pos);
+        for (int i = 0; i < ue.len; i++)
+            insert_char(&e->gb, ue.text[i]);
+    }
+
+    // Push to redo (save current state first for redo)
+    char *text_copy = malloc(ue.len + 1);
+    memcpy(text_copy, ue.text, ue.len);
+    text_copy[ue.len] = '\0';
+
+    if (e->redo.count == e->redo.cap) {
+        e->redo.cap = e->redo.cap ? e->redo.cap * 2 : 64;
+        e->redo.entries = realloc(e->redo.entries, e->redo.cap * sizeof(UndoEntry));
+    }
+    UndoEntry *re = &e->redo.entries[e->redo.count++];
+    re->type = ue.type;
+    re->pos = ue.pos;
+    re->len = ue.len;
+    re->text[0] = '\0';
+    // The text stored in redo is what undo just did (the reverse operation text)
+    // For redo of an INSERT undo (which deleted text), the redo text = original insert text
+    // For redo of a DELETE undo (which inserted text), the redo text = original delete text
+    // In both cases, ue.text is the original operation text, which is what redo needs
+    memcpy(re->text, text_copy, ue.len);
+    re->text[ue.len] = '\0';
+    re->cursor_row = ue.cursor_row;
+    re->cursor_col = ue.cursor_col;
+    free(text_copy);
+
+    // Restore cursor position
+    e->cursor_row = ue.cursor_row;
+    e->cursor_col = ue.cursor_col;
+    if (e->lines_dirty) editor_rebuild_lines(e);
+    int undo_pos = e->line_offsets[e->cursor_row] + e->cursor_col;
+    int undo_n = gb_total_logical(&e->gb);
+    if (undo_pos > undo_n) undo_pos = undo_n;
+    move_cursor(&e->gb, undo_pos);
+    e->dirty = 1;
+    e->lines_dirty = 1;
+    e->needs_scroll_to_cursor = 1;
+}
+
+void editor_redo(Editor *e) {
+    if (e->redo.count == 0) return;
+    UndoEntry re = e->redo.entries[e->redo.count - 1];
+    e->redo.count--;
+
+    // Save current state for undo
+    char *text_copy = malloc(re.len + 1);
+    memcpy(text_copy, re.text, re.len);
+    text_copy[re.len] = '\0';
+    undo_push(&e->undo, re.type, re.pos, text_copy, re.len, e);
+    free(text_copy);
+
+    if (re.type == UNDO_INSERT) {
+        // Redo insert = re-insert the text
+        move_cursor(&e->gb, re.pos);
+        for (int i = 0; i < re.len; i++)
+            insert_char(&e->gb, re.text[i]);
+    } else {
+        // Redo delete = delete the text again
+        move_cursor(&e->gb, re.pos);
+        for (int i = 0; i < re.len; i++)
+            delete_char(&e->gb);
+    }
+
+    // Restore cursor position
+    e->cursor_row = re.cursor_row;
+    e->cursor_col = re.cursor_col;
+    if (e->lines_dirty) editor_rebuild_lines(e);
+    int redo_pos = e->line_offsets[e->cursor_row] + e->cursor_col;
+    int redo_n = gb_total_logical(&e->gb);
+    if (redo_pos > redo_n) redo_pos = redo_n;
+    move_cursor(&e->gb, redo_pos);
+    e->dirty = 1;
+    e->lines_dirty = 1;
+    e->needs_scroll_to_cursor = 1;
 }
 
 static void editor_rebuild_lines(Editor *e);
@@ -201,10 +336,27 @@ void editor_copy(Editor *e) {
 
 void editor_paste(Editor *e) {
     if (!clipboard[0]) return;
-    // Delete selection if any
+    undo_clear_redo(e);
+    int clip_len = (int)strlen(clipboard);
+    // Delete selection if any — record it as part of the undo
     if (e->selection_start != e->selection_end) {
         int start = e->selection_start < e->selection_end ? e->selection_start : e->selection_end;
         int end   = e->selection_start > e->selection_end ? e->selection_start : e->selection_end;
+        int sel_len = end - start;
+        // Capture selected text before deleting
+        char sel_text[UNDO_MAX_TEXT];
+        if (sel_len >= UNDO_MAX_TEXT) sel_len = UNDO_MAX_TEXT - 1;
+        for (int i = 0; i < sel_len; i++)
+            sel_text[i] = gb_char_logical(&e->gb, start + i);
+        sel_text[sel_len] = '\0';
+        // Build compound undo: recorded text = selected_text + clipboard
+        int total = sel_len + clip_len;
+        if (total >= UNDO_MAX_TEXT) total = UNDO_MAX_TEXT - 1;
+        char compound[UNDO_MAX_TEXT];
+        memcpy(compound, sel_text, sel_len);
+        memcpy(compound + sel_len, clipboard, clip_len);
+        compound[total] = '\0';
+        undo_push(&e->undo, UNDO_DELETE, start, compound, total, e);
         delete_range(&e->gb, start, end);
         move_cursor(&e->gb, start);
         e->selection_start = e->selection_end = 0;
@@ -217,6 +369,9 @@ void editor_paste(Editor *e) {
         }
         e->cursor_row = r;
         e->cursor_col = c;
+    } else {
+        // No selection — simple insert
+        undo_push(&e->undo, UNDO_INSERT, e->gb.gap_start, clipboard, clip_len, e);
     }
     // Make sure we're in insert mode so the paste actually works
     if (e->mode == MODE_VISUAL) { e->mode = MODE_NORMAL; }
@@ -311,6 +466,9 @@ void editor_key(Editor *e, int key, int mods) {
     if (ctrl && key == GLFW_KEY_C) { editor_copy(e); goto key_done; }
     if (ctrl && key == GLFW_KEY_V) { editor_paste(e); goto key_done; }
     if (ctrl && key == GLFW_KEY_A) { e->cursor_col = 0; move_cursor(&e->gb, offset_of(e, e->cursor_row, 0)); goto key_done; }
+    // Undo & Redo
+    if (ctrl && key == GLFW_KEY_Z) { editor_undo(e); goto key_done; }
+    if (ctrl && key == GLFW_KEY_Y) { editor_redo(e); goto key_done; }
 
     if (e->mode == MODE_INSERT) {
         int cur = e->gb.gap_start;
@@ -319,6 +477,12 @@ void editor_key(Editor *e, int key, int mods) {
             int prev_row_len = 0;
             if (e->cursor_col == 0 && e->cursor_row > 0)
                 prev_row_len = logical_len_of_row(e, e->cursor_row - 1);
+            // Record what's being deleted for undo
+            if (cur > 0) {
+                undo_clear_redo(e);
+                char del = gb_char_logical(&e->gb, cur - 1);
+                undo_push(&e->undo, UNDO_DELETE, cur - 1, &del, 1, e);
+            }
             delete_char(&e->gb); e->dirty = 1; e->lines_dirty = 1;
             if (e->cursor_col > 0) e->cursor_col--;
             else if (e->cursor_row > 0) {
@@ -328,6 +492,8 @@ void editor_key(Editor *e, int key, int mods) {
             goto key_done;
         }
         if (key == GLFW_KEY_ENTER) {
+            undo_clear_redo(e);
+            undo_push(&e->undo, UNDO_INSERT, cur, "\n", 1, e);
             insert_char(&e->gb, '\n'); e->dirty = 1; e->lines_dirty = 1;
             e->cursor_row++; e->cursor_col = 0; goto key_done;
         }
@@ -404,6 +570,9 @@ void editor_key(Editor *e, int key, int mods) {
             GapBuffer *gb = &e->gb;
             int n = gb->gap_start + (gb->total_size - gb->gap_end);
             if (gb->gap_start < n) {
+                undo_clear_redo(e);
+                char del = gb_char_logical(gb, gb->gap_start);
+                undo_push(&e->undo, UNDO_DELETE, gb->gap_start, &del, 1, e);
                 gb->gap_end++;
                 e->dirty = 1;
                 e->lines_dirty = 1;
@@ -412,6 +581,8 @@ void editor_key(Editor *e, int key, int mods) {
         }
         if (key == GLFW_KEY_O) {
             int eol = offset_of(e, e->cursor_row, logical_len_of_row(e, e->cursor_row));
+            undo_clear_redo(e);
+            undo_push(&e->undo, UNDO_INSERT, eol, "\n", 1, e);
             move_cursor(&e->gb, eol);
             insert_char(&e->gb, '\n'); e->dirty = 1; e->lines_dirty = 1;
             e->cursor_row++; e->cursor_col = 0;
@@ -434,7 +605,10 @@ void editor_char(Editor *e, unsigned int cp) {
     if (e->key_handled) { e->key_handled = 0; return; }
     if (e->mode != MODE_INSERT) return;
     if (cp < 32 || cp > 126) return;
-    insert_char(&e->gb, (char)cp);
+    undo_clear_redo(e);
+    char ch = (char)cp;
+    undo_push(&e->undo, UNDO_INSERT, e->gb.gap_start, &ch, 1, e);
+    insert_char(&e->gb, ch);
     e->cursor_col++;
     e->dirty = 1;
     e->lines_dirty = 1;
