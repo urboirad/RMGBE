@@ -62,8 +62,12 @@ void startup_audio_play(const char *exe_dir) {
 
     if (!all_samples || total_alloc == 0) { free(all_samples); return; }
 
+    int num_samples = total_alloc / sizeof(short);
+    for (int i = 0; i < num_samples; i++)
+        all_samples[i] = (short)(all_samples[i] * 0.3f);
+
     g_pcm_data = all_samples;
-    g_pcm_samples = total_alloc / sizeof(short);
+    g_pcm_samples = num_samples;
 
     WAVEFORMATEX wfx = {0};
     wfx.wFormatTag = WAVE_FORMAT_PCM;
