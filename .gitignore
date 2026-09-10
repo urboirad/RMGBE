@@ -1,4 +1,6 @@
 /output
+*.o
+*.exe
 .vscode
 build/
 CMakeCache.txt
