@@ -13,6 +13,7 @@
 #endif
 
 #include "tinyfiledialogs.h"
+#include "startup_audio.h"
 #include "GLFW/glfw3.h"
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -660,6 +661,10 @@ int main(void) {
 
     term_init(&g_term);
 
+    char exe_dir[512];
+    get_exe_dir(exe_dir, sizeof(exe_dir));
+    startup_audio_play(exe_dir);
+
     glfwSetKeyCallback(win, cb_key);
     glfwSetCharCallback(win, cb_char);
     glfwSetFramebufferSizeCallback(win, cb_resize);
@@ -727,6 +732,7 @@ int main(void) {
     term_free(&g_term);
     editor_free(&g_editor);
     text_renderer_free();
+    startup_audio_stop();
     glfwTerminate();
     return 0;
 }

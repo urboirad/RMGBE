@@ -20,6 +20,7 @@ if(WIN32)
         src/terminal.c
         src/syntax.c
         src/theme.c
+        src/startup_audio.c
         vendor/tinyfiledialogs.c
         src/resources.rc
     )
@@ -33,6 +34,7 @@ else()
         src/terminal.c
         src/syntax.c
         src/theme.c
+        src/startup_audio.c
         vendor/tinyfiledialogs.c
     )
 endif()
@@ -59,7 +61,7 @@ if(WIN32)
         target_link_directories(RMGBE PRIVATE ${CMAKE_SOURCE_DIR}/lib)
         target_link_libraries(RMGBE PRIVATE glfw3)
     endif()
-    target_link_libraries(RMGBE PRIVATE opengl32 gdi32 ole32 comdlg32 shell32)
+    target_link_libraries(RMGBE PRIVATE opengl32 gdi32 ole32 comdlg32 shell32 winmm)
 elseif(APPLE)
     if(TARGET glfw)
         target_link_libraries(RMGBE PRIVATE glfw)
