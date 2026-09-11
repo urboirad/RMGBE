@@ -9,6 +9,8 @@
 #define SYNTAX_CACHE_INTERVAL 64
 
 #define UNDO_MAX_TEXT 4096
+#define SEARCH_MAX_LEN 256
+#define SEARCH_MAX_MATCHES 4096
 
 typedef enum {
     UNDO_INSERT,
@@ -56,6 +58,15 @@ typedef struct {
     int needs_scroll_to_cursor;  // set by key/char/click, cleared after scroll
     UndoStack undo;
     UndoStack redo;
+    // Search state
+    int   search_active;
+    char  search_query[SEARCH_MAX_LEN];
+    int   search_len;
+    int   search_cursor;     // cursor position within search_query
+    int   search_match_count;
+    int   search_match_cur;  // index of currently focused match
+    int   search_matches[SEARCH_MAX_MATCHES]; // buffer offsets of matches
+    int   search_prev_len;   // tracks query length to avoid redundant re-search
 } Editor;
 
 void editor_init(Editor *e);

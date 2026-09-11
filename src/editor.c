@@ -12,6 +12,80 @@
 #define LERP_SPEED 18.0f
 #define GUTTER_W(cw) (4.0f + 4.0f * (cw) + 8.0f)
 
+static char gb_char_logical(GapBuffer *gb, int pos);
+static int gb_total_logical(GapBuffer *gb);
+static void editor_rebuild_lines(Editor *e);
+static int offset_of(Editor *e, int row, int col);
+
+// ---- Search ------------------------------------------------------------------
+
+static void search_find_all(Editor *e) {
+    e->search_match_count = 0;
+    e->search_match_cur = -1;
+    if (e->search_len == 0) return;
+    int n = gb_total_logical(&e->gb);
+    for (int i = 0; i <= n - e->search_len; i++) {
+        int match = 1;
+        for (int j = 0; j < e->search_len; j++) {
+            if (gb_char_logical(&e->gb, i + j) != e->search_query[j]) { match = 0; break; }
+        }
+        if (match) {
+            if (e->search_match_count < SEARCH_MAX_MATCHES)
+                e->search_matches[e->search_match_count++] = i;
+        }
+    }
+    // Find the first match at or after the current cursor position
+    int cur_pos = offset_of(e, e->cursor_row, e->cursor_col);
+    for (int i = 0; i < e->search_match_count; i++) {
+        if (e->search_matches[i] >= cur_pos) { e->search_match_cur = i; return; }
+    }
+    if (e->search_match_count > 0) e->search_match_cur = 0;
+}
+
+static void search_goto(Editor *e, int match_idx) {
+    if (match_idx < 0 || match_idx >= e->search_match_count) return;
+    e->search_match_cur = match_idx;
+    int pos = e->search_matches[match_idx];
+    // Compute row/col from buffer offset
+    int n = gb_total_logical(&e->gb);
+    int row = 0, col = 0;
+    for (int i = 0; i < pos && i < n; i++) {
+        if (gb_char_logical(&e->gb, i) == '\n') { row++; col = 0; } else { col++; }
+    }
+    e->cursor_row = row;
+    e->cursor_col = col;
+    move_cursor(&e->gb, pos);
+    e->needs_scroll_to_cursor = 1;
+}
+
+static void search_next(Editor *e) {
+    if (e->search_match_count == 0) return;
+    e->search_match_cur = (e->search_match_cur + 1) % e->search_match_count;
+    search_goto(e, e->search_match_cur);
+}
+
+static void search_prev(Editor *e) {
+    if (e->search_match_count == 0) return;
+    e->search_match_cur = (e->search_match_cur - 1 + e->search_match_count) % e->search_match_count;
+    search_goto(e, e->search_match_cur);
+}
+
+static void search_open(Editor *e) {
+    e->search_active = 1;
+    e->search_len = 0;
+    e->search_query[0] = '\0';
+    e->search_cursor = 0;
+    e->search_match_count = 0;
+    e->search_match_cur = -1;
+    e->search_prev_len = 0;
+}
+
+static void search_close(Editor *e) {
+    e->search_active = 0;
+    e->search_match_count = 0;
+    e->search_match_cur = -1;
+}
+
 // ---- Undo/Redo ---------------------------------------------------------------
 
 static void undo_free_stack(UndoStack *s) {
@@ -468,8 +542,47 @@ static void ensure_cursor_visible(Editor *e) {
 
 void editor_key(Editor *e, int key, int mods) {
     int ctrl = (mods & GLFW_MOD_CONTROL);
+    int shift = (mods & GLFW_MOD_SHIFT);
     int prev_row = e->cursor_row;
     int prev_col = e->cursor_col;
+
+    // Search mode — intercept all keys
+    if (e->search_active) {
+        if (key == GLFW_KEY_ESCAPE) { search_close(e); goto key_done; }
+        if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+            if (shift) search_prev(e); else search_next(e);
+            goto key_done;
+        }
+        if (key == GLFW_KEY_F3) {
+            if (shift) search_prev(e); else search_next(e);
+            goto key_done;
+        }
+        if (key == GLFW_KEY_BACKSPACE && e->search_cursor > 0) {
+            memmove(e->search_query + e->search_cursor - 1,
+                    e->search_query + e->search_cursor,
+                    e->search_len - e->search_cursor + 1);
+            e->search_cursor--;
+            e->search_len--;
+            search_find_all(e);
+            goto key_done;
+        }
+        if (key == GLFW_KEY_DELETE && e->search_cursor < e->search_len) {
+            memmove(e->search_query + e->search_cursor,
+                    e->search_query + e->search_cursor + 1,
+                    e->search_len - e->search_cursor);
+            e->search_len--;
+            search_find_all(e);
+            goto key_done;
+        }
+        if (key == GLFW_KEY_LEFT && e->search_cursor > 0) { e->search_cursor--; goto key_done; }
+        if (key == GLFW_KEY_RIGHT && e->search_cursor < e->search_len) { e->search_cursor++; goto key_done; }
+        if (key == GLFW_KEY_HOME) { e->search_cursor = 0; goto key_done; }
+        if (key == GLFW_KEY_END) { e->search_cursor = e->search_len; goto key_done; }
+        goto key_done;
+    }
+
+    // Activate search
+    if (ctrl && key == GLFW_KEY_F) { search_open(e); goto key_done; }
 
     // New file
     if (ctrl && key == GLFW_KEY_N) { editor_new_file(e); goto key_done; }
@@ -616,6 +729,23 @@ key_done:
 
 void editor_char(Editor *e, unsigned int cp) {
     if (e->key_handled) { e->key_handled = 0; return; }
+
+    // Search mode — typed chars go into search query
+    if (e->search_active) {
+        if (cp < 32 || cp > 126) return;
+        if (e->search_len < SEARCH_MAX_LEN - 1) {
+            // Insert char at cursor position
+            memmove(e->search_query + e->search_cursor + 1,
+                    e->search_query + e->search_cursor,
+                    e->search_len - e->search_cursor + 1);
+            e->search_query[e->search_cursor] = (char)cp;
+            e->search_len++;
+            e->search_cursor++;
+            search_find_all(e);
+        }
+        return;
+    }
+
     if (e->mode != MODE_INSERT) return;
     if (cp < 32 || cp > 126) return;
     undo_clear_redo(e);
@@ -663,6 +793,36 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
 
     // Cursor auto-scroll is handled in editor_update, not here
     e->viewport_h = h;
+
+    // Search bar overlay at top of editor
+    float search_bar_h = 0;
+    if (e->search_active) {
+        search_bar_h = row + 8.0f;
+        float sbx = x + w - 320.0f;
+        float sby = y;
+        draw_rect(sbx, sby, 320.0f, search_bar_h, 0.15f, 0.15f, 0.18f, 0.95f);
+        draw_rect(sbx, sby, 320.0f, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+
+        char label[SEARCH_MAX_LEN + 32];
+        snprintf(label, sizeof(label), "Find: %s", e->search_query);
+        draw_text(label, sbx + 8, sby + row * 0.85f, 0.9f, 0.9f, 0.9f);
+
+        // Cursor blink inside search bar
+        float ctext_x = sbx + 8 + text_measure_len(label, e->search_cursor + 6);
+        draw_rect(ctext_x, sby + 4, 1.5f, ch, 0.9f, 0.9f, 0.9f, 0.7f);
+
+        // Match count
+        if (e->search_len > 0) {
+            char cnt[32];
+            if (e->search_match_count > 0)
+                snprintf(cnt, sizeof(cnt), "%d/%d", e->search_match_cur + 1, e->search_match_count);
+            else
+                snprintf(cnt, sizeof(cnt), "no match");
+            draw_text(cnt, sbx + 260, sby + row * 0.85f, 0.6f, 0.6f, 0.6f);
+        }
+        y += search_bar_h;
+        h -= search_bar_h;
+    }
 
     float gutter = GUTTER_W(cw);
     float cy = y + e->cursor_row * row - e->scroll_y + (row - ch) * 0.5f;
@@ -744,6 +904,23 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
                     draw_rect(x + gutter + hl_s * cw, ty + (row - ch) * 0.5f,
                               (hl_e - hl_s) * cw, ch,
                               0, 188/255.0f, 212/255.0f, 0.3f);
+                    text_renderer_begin();
+                }
+            }
+            // Highlight search matches on this line
+            if (e->search_match_count > 0 && e->search_len > 0) {
+                for (int mi = 0; mi < e->search_match_count; mi++) {
+                    int mpos = e->search_matches[mi];
+                    if (mpos < lstart || mpos >= lstart + llen - e->search_len + 1) continue;
+                    int mcol = mpos - lstart;
+                    int is_cur = (mi == e->search_match_cur);
+                    text_renderer_end();
+                    draw_rect(x + gutter + mcol * cw, ty + (row - ch) * 0.5f,
+                              e->search_len * cw, ch,
+                              is_cur ? 1.0f : 1.0f,
+                              is_cur ? 0.85f : 0.75f,
+                              is_cur ? 0.0f : 0.0f,
+                              is_cur ? 0.45f : 0.2f);
                     text_renderer_begin();
                 }
             }
