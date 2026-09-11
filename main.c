@@ -61,12 +61,14 @@ static char   g_theme_msg[128] = "";   // status message (load/save errors etc.)
 static int    g_theme_font_input_on = 0; // font size input focused
 static char   g_theme_font_input[32];    // font size edit buffer
 static int    g_theme_font_cursor;       // caret position in font size buffer
+static float  g_theme_list_scroll = 0;   // scroll offset for color list
 
 // Theme modal layout (shared between draw + hit-testing)
 #define THEME_PW     580.0f
-#define THEME_PH     680.0f
+#define THEME_PH     720.0f
 #define THEME_LIST_Y  48.0f   // list top, relative to modal top
-#define THEME_ROW_H   28.0f
+#define THEME_ROW_H   24.0f   // compact rows to fit more entries
+#define THEME_LIST_MAX_H 400.0f  // max visible height for color list
 
 static void get_exe_dir(char *buf, int len) {
 #ifdef _WIN32
@@ -384,15 +386,17 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             g_theme_open = 0; return;
         }
 
-        // Color list rows
+        // Color list rows (scrollable)
         float list_y = py + THEME_LIST_Y;
         float row_h = THEME_ROW_H;
+        float list_vis_h = THEME_LIST_MAX_H;
         int count = theme_entry_count();
-        for (int i = 0; i < count; i++) {
-            float ry = list_y + i * row_h;
-            if (my >= ry && my < ry + row_h && mx >= px + 8 && mx <= px + pw - 8) {
-                g_theme_sel = i;
-                ThemeEntry e = theme_entry_by_index(i);
+        if (my >= list_y && my < list_y + list_vis_h && mx >= px + 8 && mx <= px + pw - 8) {
+            float click_y = my - list_y + g_theme_list_scroll;
+            int idx = (int)(click_y / row_h);
+            if (idx >= 0 && idx < count) {
+                g_theme_sel = idx;
+                ThemeEntry e = theme_entry_by_index(idx);
                 theme_color_to_hex(e.color, g_theme_input, sizeof(g_theme_input));
                 g_theme_cursor = (int)strlen(g_theme_input);
                 g_theme_input_on = 1;
@@ -401,12 +405,15 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             }
         }
 
+        // Controls below list
+        float ctrl_y = list_y + list_vis_h + 12.0f;
+        float ib_h = 24.0f;
+
         // Input box (color)
-        float ib_x = px + 100.0f, ib_y = py + ph - 200.0f, ib_w = 180.0f, ib_h = 26.0f;
-        if (mx >= ib_x && mx <= ib_x + ib_w && my >= ib_y && my <= ib_y + ib_h) {
+        float ib_x = px + 100.0f, ib_w = 180.0f;
+        if (mx >= ib_x && mx <= ib_x + ib_w && my >= ctrl_y && my <= ctrl_y + ib_h) {
             g_theme_input_on = 1;
             g_theme_font_input_on = 0;
-            // place caret near click
             float cwch = text_char_width();
             int off = (int)((mx - ib_x - 6.0f) / cwch);
             int len = (int)strlen(g_theme_input);
@@ -417,17 +424,17 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
 
         // Gradient cycle button
-        float gr_x = px + 320.0f, gr_y = py + ph - 200.0f, gr_w = 160.0f;
-        if (mx >= gr_x && mx <= gr_x + gr_w && my >= gr_y && my <= gr_y + 26.0f) {
+        if (mx >= px + 300.0f && mx <= px + 440.0f && my >= ctrl_y && my <= ctrl_y + ib_h) {
             g_theme.bg_gradient = (g_theme.bg_gradient + 1) % 3;
             theme_save_persisted();
             return;
         }
 
+        ctrl_y += ib_h + 8.0f;
+
         // Font size input
-        float fs_y = py + ph - 160.0f;
         float fs_ib_x = px + 120.0f, fs_ib_w = 80.0f;
-        if (mx >= fs_ib_x && mx <= fs_ib_x + fs_ib_w && my >= fs_y && my <= fs_y + 26.0f) {
+        if (mx >= fs_ib_x && mx <= fs_ib_x + fs_ib_w && my >= ctrl_y && my <= ctrl_y + ib_h) {
             g_theme_font_input_on = 1;
             g_theme_input_on = 0;
             snprintf(g_theme_font_input, sizeof(g_theme_font_input), "%.1f", g_theme.font_size);
@@ -435,9 +442,10 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
             return;
         }
 
+        ctrl_y += ib_h + 8.0f;
+
         // Font path chooser button
-        float fp_y = py + ph - 120.0f;
-        if (mx >= px + 390.0f && mx <= px + 480.0f && my >= fp_y && my <= fp_y + 26.0f) {
+        if (mx >= px + 390.0f && mx <= px + 480.0f && my >= ctrl_y && my <= ctrl_y + ib_h) {
             char path[1024] = "";
             if (open_file_dialog(path, sizeof(path),
                                   "Font Files (*.ttf)\0*.ttf\0All Files (*.*)\0*.*\0")) {
@@ -450,7 +458,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
 
         // Bottom-left buttons
-        float btn_y = py + ph - 58.0f;
+        float btn_y = py + ph - 38.0f;
         struct { float x; float w; const char *label; } b[] = {
             { px + 20.0f,   72.0f, "Load..." },
             { px + 104.0f,  92.0f, "Save As..." },
@@ -531,8 +539,12 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                 editor_save_file(&g_editor);
             }
         }
-        if (mx >= 390 && mx <= 460)
+        if (mx >= 390 && mx <= 460) {
             g_theme_open = 1;
+            g_theme_list_scroll = 0;
+            g_theme_input_on = 0;
+            g_theme_font_input_on = 0;
+        }
         if (mx >= 468 && mx <= 528)
             g_about_open = 1;
         return;
@@ -565,6 +577,18 @@ static void cb_scroll(GLFWwindow *win, double xoff, double yoff) {
     glfwGetCursorPos(win, &mx, &my);
     float sidebar_w = (float)PANEL_SIDEBAR_W;
     float toolbar_h = 32.0f;
+
+    // Theme editor scroll — scroll the color list
+    if (g_theme_open) {
+        float pw = THEME_PW, ph = THEME_PH;
+        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+        float list_y = py + THEME_LIST_Y;
+        if (mx >= px && mx <= px + pw && my >= list_y && my <= list_y + THEME_LIST_MAX_H) {
+            g_theme_list_scroll -= (float)yoff * THEME_ROW_H * 3.0f;
+            return;
+        }
+    }
+
     if (mx < sidebar_w && my > toolbar_h) {
         // Scroll file panel
         float ch = text_char_height();
@@ -626,13 +650,30 @@ static void draw_theme_editor(void) {
 
     draw_text("Theme Editor", px + 16, py + 28.0f, COLOR_TEXT);
 
-    // ---- Color list ----
+    // ---- Color list (scrollable) ----
     float list_y = py + THEME_LIST_Y;
     float row_h = THEME_ROW_H;
     int count = theme_entry_count();
     float chw = text_char_width();
+    float list_total = count * row_h;
+    float list_vis_h = THEME_LIST_MAX_H;
+
+    // Clamp scroll
+    float max_scroll = list_total - list_vis_h;
+    if (max_scroll < 0) max_scroll = 0;
+    if (g_theme_list_scroll < 0) g_theme_list_scroll = 0;
+    if (g_theme_list_scroll > max_scroll) g_theme_list_scroll = max_scroll;
+
+    // Scissor-clip the list region
+    int sx = (int)px, sy = (int)list_y;
+    int sw = (int)pw, sh = (int)list_vis_h;
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(sx * cw / (float)g_win_w, (float)g_win_h - (sy + sh) * ch / (float)g_win_h,
+              sw * cw / (float)g_win_w, sh * ch / (float)g_win_h);
+
     for (int i = 0; i < count; i++) {
-        float ry = list_y + i * row_h;
+        float ry = list_y + i * row_h - g_theme_list_scroll;
+        if (ry + row_h < list_y || ry > list_y + list_vis_h) continue;
 
         // Row background: highlight selected
         if (i == g_theme_sel)
@@ -641,78 +682,93 @@ static void draw_theme_editor(void) {
         ThemeEntry e = theme_entry_by_index(i);
 
         // Swatch
-        draw_rect(px + 14, ry + 5.0f, 34.0f, row_h - 10.0f,
+        draw_rect(px + 14, ry + 4.0f, 28.0f, row_h - 8.0f,
                   e.color->r, e.color->g, e.color->b, 1.0f);
-        draw_rect(px + 14, ry + 5.0f, 34.0f, 1.0f, 1, 1, 1, 0.35f);
-        draw_rect(px + 14, ry + row_h - 6.0f, 34.0f, 1.0f, 1, 1, 1, 0.35f);
+        draw_rect(px + 14, ry + 4.0f, 28.0f, 1.0f, 1, 1, 1, 0.35f);
+        draw_rect(px + 14, ry + row_h - 5.0f, 28.0f, 1.0f, 1, 1, 1, 0.35f);
 
         // Label
-        draw_text(e.label, px + 58.0f, ry + row_h * 0.75f, COLOR_TEXT);
+        draw_text(e.label, px + 50.0f, ry + row_h * 0.75f, COLOR_TEXT);
 
         // Hex value (dimmed)
         char hex[16];
         theme_color_to_hex(e.color, hex, sizeof(hex));
         draw_text(hex, px + 280.0f, ry + row_h * 0.75f, 0.65f, 0.65f, 0.65f);
     }
+    glDisable(GL_SCISSOR_TEST);
 
-    // ---- Edit row ----
-    float ib_x = px + 100.0f, ib_y = py + ph - 140.0f, ib_w = 180.0f, ib_h = 26.0f;
-    draw_text("Value:", px + 20.0f, ib_y + 18.0f, COLOR_TEXT);
-    draw_rect(ib_x, ib_y, ib_w, ib_h, 0, 0, 0, 0.6f);
-    draw_rect(ib_x, ib_y, ib_w, 1.0f, g_theme_input_on ? 0.9f : 0.35f,
+    // Scrollbar (thin track on right edge of list)
+    if (max_scroll > 0) {
+        float track_x = px + pw - 10.0f;
+        float track_h = list_vis_h;
+        float thumb_h = track_h * (list_vis_h / list_total);
+        float thumb_y = list_y + (g_theme_list_scroll / max_scroll) * (track_h - thumb_h);
+        draw_rect(track_x, list_y, 4.0f, track_h, 0.2f, 0.2f, 0.25f, 0.5f);
+        draw_rect(track_x, thumb_y, 4.0f, thumb_h, 0.5f, 0.5f, 0.55f, 0.7f);
+    }
+
+    // ---- Controls below list ----
+    float ctrl_y = list_y + list_vis_h + 12.0f;
+
+    // Value input row
+    draw_text("Value:", px + 20.0f, ctrl_y + 14.0f, COLOR_TEXT);
+    float ib_x = px + 100.0f, ib_w = 180.0f, ib_h = 24.0f;
+    draw_rect(ib_x, ctrl_y, ib_w, ib_h, 0, 0, 0, 0.6f);
+    draw_rect(ib_x, ctrl_y, ib_w, 1.0f, g_theme_input_on ? 0.9f : 0.35f,
               g_theme_input_on ? 0.9f : 0.35f, g_theme_input_on ? 0.9f : 0.4f, 1.0f);
-    draw_rect(ib_x, ib_y + ib_h - 1.0f, ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
-
-    // Input text with caret
+    draw_rect(ib_x, ctrl_y + ib_h - 1.0f, ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
     {
         float tx = ib_x + 6.0f;
-        draw_text(g_theme_input, tx, ib_y + 18.0f, COLOR_TEXT);
+        draw_text(g_theme_input, tx, ctrl_y + 16.0f, COLOR_TEXT);
         if (g_theme_input_on && ((int)(glfwGetTime() * 2.0) & 1)) {
-            int before = g_theme_cursor;
-            float cx = tx + before * chw;
-            draw_rect(cx, ib_y + 4.0f, 1.5f, ib_h - 8.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
+            float cx = tx + g_theme_cursor * chw;
+            draw_rect(cx, ctrl_y + 4.0f, 1.5f, ib_h - 8.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
         }
     }
 
     // Gradient cycle button
     const char *gl = g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "Gradient: Vertical" :
                      g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "Gradient: Horizontal" : "Gradient: None";
-    draw_rect(px + 320.0f, py + ph - 200.0f, 160.0f, 26.0f, COLOR_BUTTON, 0.5f);
-    draw_text(gl, px + 332.0f, py + ph - 182.0f, COLOR_TEXT);
+    draw_rect(px + 300.0f, ctrl_y, 140.0f, ib_h, COLOR_BUTTON, 0.5f);
+    draw_text(gl, px + 308.0f, ctrl_y + 16.0f, COLOR_TEXT);
 
-    // Font size input
-    float fs_y = py + ph - 160.0f;
-    draw_text("Font size:", px + 20.0f, fs_y + 18.0f, COLOR_TEXT);
+    ctrl_y += ib_h + 8.0f;
+
+    // Font size input row
+    draw_text("Font size:", px + 20.0f, ctrl_y + 14.0f, COLOR_TEXT);
     float fs_ib_x = px + 120.0f, fs_ib_w = 80.0f;
-    draw_rect(fs_ib_x, fs_y, fs_ib_w, 26.0f, 0, 0, 0, 0.6f);
-    draw_rect(fs_ib_x, fs_y, fs_ib_w, 1.0f, g_theme_font_input_on ? 0.9f : 0.35f,
+    draw_rect(fs_ib_x, ctrl_y, fs_ib_w, ib_h, 0, 0, 0, 0.6f);
+    draw_rect(fs_ib_x, ctrl_y, fs_ib_w, 1.0f, g_theme_font_input_on ? 0.9f : 0.35f,
               g_theme_font_input_on ? 0.9f : 0.35f, g_theme_font_input_on ? 0.9f : 0.4f, 1.0f);
-    draw_rect(fs_ib_x, fs_y + 25.0f, fs_ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
-    draw_text(g_theme_font_input, fs_ib_x + 6.0f, fs_y + 18.0f, COLOR_TEXT);
+    draw_rect(fs_ib_x, ctrl_y + ib_h - 1.0f, fs_ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
+    draw_text(g_theme_font_input, fs_ib_x + 6.0f, ctrl_y + 16.0f, COLOR_TEXT);
     if (g_theme_font_input_on && ((int)(glfwGetTime() * 2.0) & 1)) {
         float cx = fs_ib_x + 6.0f + g_theme_font_cursor * chw;
-        draw_rect(cx, fs_y + 4.0f, 1.5f, 18.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
+        draw_rect(cx, ctrl_y + 4.0f, 1.5f, ib_h - 8.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
     }
 
-    // Font path chooser
-    float fp_y = py + ph - 120.0f;
-    draw_text("Font:", px + 20.0f, fp_y + 18.0f, COLOR_TEXT);
+    ctrl_y += ib_h + 8.0f;
+
+    // Font path chooser row
+    draw_text("Font:", px + 20.0f, ctrl_y + 14.0f, COLOR_TEXT);
     const char *fp_label = g_theme.font_path[0] ? g_theme.font_path : "(embedded)";
-    draw_rect(px + 80.0f, fp_y, 300.0f, 26.0f, COLOR_BUTTON, 0.5f);
-    draw_text(fp_label, px + 88.0f, fp_y + 18.0f, COLOR_TEXT);
-    draw_rect(px + 390.0f, fp_y, 90.0f, 26.0f, COLOR_BUTTON, 0.5f);
-    draw_text("Choose...", px + 398.0f, fp_y + 18.0f, COLOR_TEXT);
+    draw_rect(px + 80.0f, ctrl_y, 300.0f, ib_h, COLOR_BUTTON, 0.5f);
+    draw_text(fp_label, px + 88.0f, ctrl_y + 16.0f, COLOR_TEXT);
+    draw_rect(px + 390.0f, ctrl_y, 90.0f, ib_h, COLOR_BUTTON, 0.5f);
+    draw_text("Choose...", px + 398.0f, ctrl_y + 16.0f, COLOR_TEXT);
+
+    ctrl_y += ib_h + 12.0f;
 
     // Hint / message line
     if (g_theme_msg[0])
-        draw_text(g_theme_msg, px + 20.0f, py + ph - 82.0f, 0.8f, 0.8f, 0.5f);
+        draw_text(g_theme_msg, px + 20.0f, ctrl_y + 14.0f, 0.8f, 0.8f, 0.5f);
     else if (g_theme_sel >= 0)
-        draw_text("Type #RRGGBB or R,G,B then press Enter", px + 20.0f, py + ph - 82.0f, 0.55f, 0.55f, 0.55f);
+        draw_text("Type #RRGGBB or R,G,B then press Enter", px + 20.0f, ctrl_y + 14.0f, 0.55f, 0.55f, 0.55f);
     else
-        draw_text("Click a color to edit", px + 20.0f, py + ph - 82.0f, 0.55f, 0.55f, 0.55f);
+        draw_text("Click a color to edit", px + 20.0f, ctrl_y + 14.0f, 0.55f, 0.55f, 0.55f);
 
     // ---- Bottom buttons ----
-    float btn_y = py + ph - 58.0f;
+    float btn_y = py + ph - 38.0f;
     struct { float x; float w; const char *label; } b[] = {
         { px + 20.0f,   72.0f, "Load..." },
         { px + 104.0f,  92.0f, "Save As..." },
