@@ -25,8 +25,11 @@ static void undo_free_stack(UndoStack *s) {
 static void undo_push(UndoStack *stack, UndoType type, int pos, const char *text, int len, Editor *e) {
     if (len <= 0 || len >= UNDO_MAX_TEXT) return;
     if (stack->count == stack->cap) {
-        stack->cap = stack->cap ? stack->cap * 2 : 64;
-        stack->entries = realloc(stack->entries, stack->cap * sizeof(UndoEntry));
+        int new_cap = stack->cap ? stack->cap * 2 : 64;
+        UndoEntry *new_entries = realloc(stack->entries, new_cap * sizeof(UndoEntry));
+        if (!new_entries) return;
+        stack->entries = new_entries;
+        stack->cap = new_cap;
     }
     UndoEntry *ue = &stack->entries[stack->count++];
     ue->type = type;
@@ -54,8 +57,8 @@ void editor_init(Editor *e) {
     e->smooth.vis_y = 0;
     e->line_cap = 256;
     e->line_offsets = malloc(e->line_cap * sizeof(int));
-    e->line_offsets[0] = 0;
-    e->line_count = 1;
+    if (e->line_offsets) e->line_offsets[0] = 0;
+    e->line_count = e->line_offsets ? 1 : 0;
     e->lines_dirty = 1;
     e->undo.entries = NULL;
     e->undo.count = e->undo.cap = 0;
@@ -87,8 +90,11 @@ static void editor_rebuild_lines(Editor *e) {
     int start = 0;
     while (start <= n) {
         if (e->line_count >= e->line_cap) {
-            e->line_cap *= 2;
-            e->line_offsets = realloc(e->line_offsets, e->line_cap * sizeof(int));
+            int new_cap = e->line_cap * 2;
+            int *new_offsets = realloc(e->line_offsets, new_cap * sizeof(int));
+            if (!new_offsets) { e->lines_dirty = 0; return; }
+            e->line_offsets = new_offsets;
+            e->line_cap = new_cap;
         }
         e->line_offsets[e->line_count++] = start;
         if (start == n) break;
@@ -104,7 +110,9 @@ static void editor_rebuild_syntax_cache(Editor *e) {
     int count = (e->line_count + SYNTAX_CACHE_INTERVAL - 1) / SYNTAX_CACHE_INTERVAL;
     if (count < 1) count = 1;
     if (count != e->syntax_cache_count) {
-        e->syntax_cache = realloc(e->syntax_cache, count * sizeof(SyntaxState));
+        SyntaxState *new_cache = realloc(e->syntax_cache, count * sizeof(SyntaxState));
+        if (!new_cache) return;
+        e->syntax_cache = new_cache;
         e->syntax_cache_count = count;
     }
     SyntaxState state = {0};
@@ -213,12 +221,16 @@ void editor_undo(Editor *e) {
 
     // Push to redo (save current state first for redo)
     char *text_copy = malloc(ue.len + 1);
+    if (!text_copy) return;
     memcpy(text_copy, ue.text, ue.len);
     text_copy[ue.len] = '\0';
 
     if (e->redo.count == e->redo.cap) {
-        e->redo.cap = e->redo.cap ? e->redo.cap * 2 : 64;
-        e->redo.entries = realloc(e->redo.entries, e->redo.cap * sizeof(UndoEntry));
+        int new_cap = e->redo.cap ? e->redo.cap * 2 : 64;
+        UndoEntry *new_entries = realloc(e->redo.entries, new_cap * sizeof(UndoEntry));
+        if (!new_entries) { free(text_copy); return; }
+        e->redo.entries = new_entries;
+        e->redo.cap = new_cap;
     }
     UndoEntry *re = &e->redo.entries[e->redo.count++];
     re->type = ue.type;
@@ -255,6 +267,7 @@ void editor_redo(Editor *e) {
 
     // Save current state for undo
     char *text_copy = malloc(re.len + 1);
+    if (!text_copy) return;
     memcpy(text_copy, re.text, re.len);
     text_copy[re.len] = '\0';
     undo_push(&e->undo, re.type, re.pos, text_copy, re.len, e);

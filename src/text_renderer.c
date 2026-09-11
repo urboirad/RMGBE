@@ -25,9 +25,11 @@ void text_renderer_init(const char *font_path, float font_size) {
     if (!f) { fprintf(stderr, "text_renderer: cannot open font: %s\n", font_path); return; }
     fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
     unsigned char *ttf = malloc(sz);
+    if (!ttf) { fclose(f); return; }
     fread(ttf, 1, sz, f); fclose(f);
 
     unsigned char *bitmap = calloc(ATLAS_W * ATLAS_H, 1);
+    if (!bitmap) { free(ttf); return; }
     stbtt_BakeFontBitmap(ttf, 0, font_size, bitmap, ATLAS_W, ATLAS_H, FIRST_CHAR, NUM_CHARS, g_chars);
     free(ttf);
 

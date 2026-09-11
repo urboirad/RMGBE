@@ -18,17 +18,19 @@ static void gb_check_invariants(const GapBuffer *gb) {
 
 void init_buffer(GapBuffer *gb, int size) {
     gb->buffer = malloc(size);
+    if (!gb->buffer) { gb->total_size = 0; gb->gap_start = gb->gap_end = 0; return; }
     gb->total_size = size;
     gb->gap_start = 0;
     gb->gap_end = size;
     gb_check_invariants(gb);
 }
 
-static void resize_buffer(GapBuffer *gb) {
+static int resize_buffer(GapBuffer *gb) {
     gb_check_invariants(gb);
     int old_size = gb->total_size;
     int new_size = old_size * 2;
     char *new_buffer = malloc(new_size);
+    if (!new_buffer) return 0;
 
     memcpy(new_buffer, gb->buffer, gb->gap_start);
     int post_gap_size = old_size - gb->gap_end;
@@ -40,12 +42,13 @@ static void resize_buffer(GapBuffer *gb) {
     gb->total_size = new_size;
     gb->gap_end = new_gap_end;
     gb_check_invariants(gb);
+    return 1;
 }
 
 void insert_char(GapBuffer *gb, char c) {
     gb_check_invariants(gb);
     if (gb->gap_start == gb->gap_end)
-        resize_buffer(gb);
+        if (!resize_buffer(gb)) return;
     gb->buffer[gb->gap_start++] = c;
     gb_check_invariants(gb);
 }

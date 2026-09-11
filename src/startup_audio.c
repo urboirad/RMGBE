@@ -54,8 +54,9 @@ void startup_audio_play(const char *exe_dir) {
         if (samples <= 0) continue;
 
         int new_size = total_alloc + samples * info.channels * sizeof(short);
-        all_samples = realloc(all_samples, new_size);
-        if (!all_samples) break;
+        short *new_samples = realloc(all_samples, new_size);
+        if (!new_samples) break;
+        all_samples = new_samples;
         memcpy(all_samples + total_alloc / sizeof(short), pcm, samples * info.channels * sizeof(short));
         total_alloc += samples * info.channels * sizeof(short);
     }

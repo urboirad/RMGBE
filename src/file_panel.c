@@ -35,6 +35,7 @@ static void scan_dir(FilePanel *fp, const char *path, int depth, int parent_idx)
         int idx = fp->count;
         fp->count++;
         strncpy(e->name, fd.cFileName, FP_NAME_LEN - 1);
+        e->name[FP_NAME_LEN - 1] = '\0';
         snprintf(e->full_path, sizeof(e->full_path), "%s\\%s", path, fd.cFileName);
         e->is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         e->depth  = depth;
@@ -55,6 +56,7 @@ static void scan_dir(FilePanel *fp, const char *path, int depth, int parent_idx)
         int idx = fp->count;
         fp->count++;
         strncpy(e->name, ent->d_name, FP_NAME_LEN - 1);
+        e->name[FP_NAME_LEN - 1] = '\0';
         snprintf(e->full_path, sizeof(e->full_path), "%s/%s", path, ent->d_name);
         e->depth = depth;
         e->expanded = 0;
@@ -72,6 +74,7 @@ static void scan_dir(FilePanel *fp, const char *path, int depth, int parent_idx)
 
 void fp_open_dir(FilePanel *fp, const char *path) {
     strncpy(fp->root, path, sizeof(fp->root) - 1);
+    fp->root[sizeof(fp->root) - 1] = '\0';
     fp->count    = 0;
     fp->selected = -1;
     scan_dir(fp, path, 0, -1);
@@ -140,14 +143,14 @@ static void expand_dir(FilePanel *fp, int idx) {
     FileEntry *e = &fp->entries[idx];
     if (!e->is_dir || e->expanded) return;
 
-    // Scan children into temp buffer
-    FileEntry temp[256];
+    // Scan children into temp buffer (heap-allocated to avoid stack overflow)
     int old_count = fp->count;
     scan_dir(fp, e->full_path, e->depth + 1, idx);
     int added = fp->count - old_count;
     if (added <= 0) { e->expanded = 1; return; }
 
-    // Copy new entries to temp, restore count
+    FileEntry *temp = malloc(added * sizeof(FileEntry));
+    if (!temp) { fp->count = old_count; return; }
     memcpy(temp, &fp->entries[old_count], added * sizeof(FileEntry));
     fp->count = old_count;
 
@@ -170,6 +173,7 @@ static void expand_dir(FilePanel *fp, int idx) {
 
     // Copy new entries into position (AFTER fixing shifted entries)
     memcpy(&fp->entries[insert_at], temp, added * sizeof(FileEntry));
+    free(temp);
     e->expanded = 1;
 }
 
