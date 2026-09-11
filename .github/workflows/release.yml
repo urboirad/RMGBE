@@ -32,9 +32,10 @@ jobs:
             -Iinclude -Ivendor \
             main.c src/gap_buffer.c src/text_renderer.c src/editor.c \
             src/file_panel.c src/terminal.c src/syntax.c src/theme.c \
+            src/startup_audio.c \
             vendor/tinyfiledialogs.c \
             resources.o -o RMGBE.exe -s -Wl,--gc-sections \
-            -Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lm
+            -Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lwinmm -lm
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
