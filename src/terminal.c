@@ -1,5 +1,6 @@
 #include "terminal.h"
 #include "text_renderer.h"
+#include "colors.h"
 #include "GLFW/glfw3.h"
 #include <string.h>
 #include <stdio.h>
@@ -154,8 +155,8 @@ void term_key_input(Terminal *t, int key) {
 }
 
 void term_render(Terminal *t, float x, float y, float w, float h) {
-    draw_rect(x, y, w, h, 0.08f, 0.08f, 0.10f, 1.0f);
-    draw_rect(x, y, w, 1.0f, 0.2f, 0.6f, 1.0f, 1.0f); // top border
+    draw_rect(x, y, w, h, COLOR_TERM_BACKGROUND, 1.0f);
+    draw_rect(x, y, w, 1.0f, COLOR_TERM_BORDER, 1.0f);
 
     float ch  = text_char_height();
     float row = ch + 2.0f;
@@ -166,13 +167,13 @@ void term_render(Terminal *t, float x, float y, float w, float h) {
     float ty = y + 6.0f;
     for (int i = start; i <= t->line_count && i < TERM_LINES; i++) {
         if (ty + row > y + h - row) break;
-        draw_text(t->lines[i], x + 6.0f, ty + ch * 0.85f, 0.8f, 0.9f, 0.8f);
+        draw_text(t->lines[i], x + 6.0f, ty + ch * 0.85f, COLOR_TERM_TEXT);
         ty += row;
     }
 
     // Input line
     char prompt[TERM_LINE_LEN + 4];
     snprintf(prompt, sizeof(prompt), "> %s_", t->input_buf);
-    draw_rect(x, y + h - row - 4.0f, w, row + 4.0f, 0.05f, 0.05f, 0.07f, 1.0f);
+    draw_rect(x, y + h - row - 4.0f, w, row + 4.0f, COLOR_TERM_INPUT_BG, 1.0f);
     draw_text(prompt, x + 6.0f, y + h - 4.0f, 0.4f, 1.0f, 0.5f);
 }

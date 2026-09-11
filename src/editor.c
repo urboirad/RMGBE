@@ -800,8 +800,8 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
         search_bar_h = row + 8.0f;
         float sbx = x + w - 320.0f;
         float sby = y;
-        draw_rect(sbx, sby, 320.0f, search_bar_h, 0.15f, 0.15f, 0.18f, 0.95f);
-        draw_rect(sbx, sby, 320.0f, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+        draw_rect(sbx, sby, 320.0f, search_bar_h, COLOR_SEARCH_BAR_BG, 0.95f);
+        draw_rect(sbx, sby, 320.0f, 1.0f, COLOR_MODAL_BORDER, 1.0f);
 
         char label[SEARCH_MAX_LEN + 32];
         snprintf(label, sizeof(label), "Find: %s", e->search_query);
@@ -809,7 +809,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
 
         // Cursor blink inside search bar
         float ctext_x = sbx + 8 + text_measure_len(label, e->search_cursor + 6);
-        draw_rect(ctext_x, sby + 4, 1.5f, ch, 0.9f, 0.9f, 0.9f, 0.7f);
+        draw_rect(ctext_x, sby + 4, 1.5f, ch, COLOR_TEXT, 0.7f);
 
         // Match count
         if (e->search_len > 0) {
@@ -903,7 +903,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
                     text_renderer_end();
                     draw_rect(x + gutter + hl_s * cw, ty + (row - ch) * 0.5f,
                               (hl_e - hl_s) * cw, ch,
-                              0, 188/255.0f, 212/255.0f, 0.3f);
+                              COLOR_CURSOR_HIGHLIGHT, 0.3f);
                     text_renderer_begin();
                 }
             }
@@ -915,12 +915,14 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
                     int mcol = mpos - lstart;
                     int is_cur = (mi == e->search_match_cur);
                     text_renderer_end();
-                    draw_rect(x + gutter + mcol * cw, ty + (row - ch) * 0.5f,
-                              e->search_len * cw, ch,
-                              is_cur ? 1.0f : 1.0f,
-                              is_cur ? 0.85f : 0.75f,
-                              is_cur ? 0.0f : 0.0f,
-                              is_cur ? 0.45f : 0.2f);
+                    if (is_cur)
+                        draw_rect(x + gutter + mcol * cw, ty + (row - ch) * 0.5f,
+                                  e->search_len * cw, ch,
+                                  COLOR_SEARCH_MATCH_CUR, 0.45f);
+                    else
+                        draw_rect(x + gutter + mcol * cw, ty + (row - ch) * 0.5f,
+                                  e->search_len * cw, ch,
+                                  COLOR_SEARCH_MATCH, 0.2f);
                     text_renderer_begin();
                 }
             }

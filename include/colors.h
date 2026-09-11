@@ -19,4 +19,21 @@
 #define COLOR_BUTTON            g_theme.button.r, g_theme.button.g, g_theme.button.b
 #define COLOR_STATUSBAR         g_theme.statusbar.r, g_theme.statusbar.g, g_theme.statusbar.b
 
+#define COLOR_FP_BACKGROUND     g_theme.fp_background.r, g_theme.fp_background.g, g_theme.fp_background.b
+#define COLOR_FP_SELECTION      g_theme.fp_selection.r, g_theme.fp_selection.g, g_theme.fp_selection.b
+#define COLOR_FP_TEXT           g_theme.fp_text.r, g_theme.fp_text.g, g_theme.fp_text.b
+#define COLOR_FP_FOLDER         g_theme.fp_folder.r, g_theme.fp_folder.g, g_theme.fp_folder.b
+
+#define COLOR_TERM_BACKGROUND   g_theme.term_background.r, g_theme.term_background.g, g_theme.term_background.b
+#define COLOR_TERM_BORDER       g_theme.term_border.r, g_theme.term_border.g, g_theme.term_border.b
+#define COLOR_TERM_TEXT         g_theme.term_text.r, g_theme.term_text.g, g_theme.term_text.b
+#define COLOR_TERM_INPUT_BG     g_theme.term_input_bg.r, g_theme.term_input_bg.g, g_theme.term_input_bg.b
+
+#define COLOR_MODAL_BACKGROUND  g_theme.modal_background.r, g_theme.modal_background.g, g_theme.modal_background.b
+#define COLOR_MODAL_BORDER      g_theme.modal_border.r, g_theme.modal_border.g, g_theme.modal_border.b
+
+#define COLOR_SEARCH_BAR_BG     g_theme.search_bar_bg.r, g_theme.search_bar_bg.g, g_theme.search_bar_bg.b
+#define COLOR_SEARCH_MATCH      g_theme.search_match.r, g_theme.search_match.g, g_theme.search_match.b
+#define COLOR_SEARCH_MATCH_CUR  g_theme.search_match_cur.r, g_theme.search_match_cur.g, g_theme.search_match_cur.b
+
 #endif

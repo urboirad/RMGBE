@@ -58,10 +58,13 @@ static int    g_theme_input_on = 0;    // text input focused
 static char   g_theme_input[64];       // edit buffer ("#RRGGBB" or "R,G,B")
 static int    g_theme_cursor;          // caret position in buffer
 static char   g_theme_msg[128] = "";   // status message (load/save errors etc.)
+static int    g_theme_font_input_on = 0; // font size input focused
+static char   g_theme_font_input[32];    // font size edit buffer
+static int    g_theme_font_cursor;       // caret position in font size buffer
 
 // Theme modal layout (shared between draw + hit-testing)
 #define THEME_PW     580.0f
-#define THEME_PH     620.0f
+#define THEME_PH     680.0f
 #define THEME_LIST_Y  48.0f   // list top, relative to modal top
 #define THEME_ROW_H   28.0f
 
@@ -250,6 +253,40 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
                 if (key == GLFW_KEY_HOME) { g_theme_cursor = 0;   return; }
                 if (key == GLFW_KEY_END)  { g_theme_cursor = len; return; }
             }
+            if (g_theme_font_input_on) {
+                int len = (int)strlen(g_theme_font_input);
+                if (key == GLFW_KEY_ESCAPE) { g_theme_font_input_on = 0; return; }
+                if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+                    float sz = 0;
+                    if (sscanf(g_theme_font_input, "%f", &sz) == 1 && sz >= 6.0f && sz <= 72.0f) {
+                        g_theme.font_size = sz;
+                        theme_apply_font();
+                        theme_save_persisted();
+                        g_theme_msg[0] = '\0';
+                    } else {
+                        snprintf(g_theme_msg, sizeof(g_theme_msg), "Font size must be 6-72");
+                    }
+                    g_theme_font_input_on = 0;
+                    return;
+                }
+                if (key == GLFW_KEY_BACKSPACE && g_theme_font_cursor > 0) {
+                    memmove(g_theme_font_input + g_theme_font_cursor - 1,
+                            g_theme_font_input + g_theme_font_cursor,
+                            len - g_theme_font_cursor + 1);
+                    g_theme_font_cursor--;
+                    return;
+                }
+                if (key == GLFW_KEY_DELETE && g_theme_font_cursor < len) {
+                    memmove(g_theme_font_input + g_theme_font_cursor,
+                            g_theme_font_input + g_theme_font_cursor + 1,
+                            len - g_theme_font_cursor);
+                    return;
+                }
+                if (key == GLFW_KEY_LEFT  && g_theme_font_cursor > 0)     { g_theme_font_cursor--; return; }
+                if (key == GLFW_KEY_RIGHT && g_theme_font_cursor < len)   { g_theme_font_cursor++; return; }
+                if (key == GLFW_KEY_HOME) { g_theme_font_cursor = 0;   return; }
+                if (key == GLFW_KEY_END)  { g_theme_font_cursor = len; return; }
+            }
             return; // swallow all other keys while modal is open
         }
 
@@ -282,6 +319,19 @@ static void cb_char(GLFWwindow *win, unsigned int cp) {
                         len - g_theme_cursor + 1);
                 g_theme_input[g_theme_cursor++] = (char)cp;
                 g_theme_input[len + 1] = '\0';
+            }
+        }
+        if (g_theme_font_input_on && cp >= 32 && cp < 127) {
+            // Only accept digits and one decimal point
+            if ((cp >= '0' && cp <= '9') || (cp == '.' && !strchr(g_theme_font_input, '.'))) {
+                int len = (int)strlen(g_theme_font_input);
+                if (len < (int)sizeof(g_theme_font_input) - 1 && g_theme_font_cursor <= len) {
+                    memmove(g_theme_font_input + g_theme_font_cursor + 1,
+                            g_theme_font_input + g_theme_font_cursor,
+                            len - g_theme_font_cursor + 1);
+                    g_theme_font_input[g_theme_font_cursor++] = (char)cp;
+                    g_theme_font_input[len + 1] = '\0';
+                }
             }
         }
         return;
@@ -346,14 +396,16 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                 theme_color_to_hex(e.color, g_theme_input, sizeof(g_theme_input));
                 g_theme_cursor = (int)strlen(g_theme_input);
                 g_theme_input_on = 1;
+                g_theme_font_input_on = 0;
                 return;
             }
         }
 
-        // Input box
-        float ib_x = px + 100.0f, ib_y = py + ph - 140.0f, ib_w = 180.0f, ib_h = 26.0f;
+        // Input box (color)
+        float ib_x = px + 100.0f, ib_y = py + ph - 200.0f, ib_w = 180.0f, ib_h = 26.0f;
         if (mx >= ib_x && mx <= ib_x + ib_w && my >= ib_y && my <= ib_y + ib_h) {
             g_theme_input_on = 1;
+            g_theme_font_input_on = 0;
             // place caret near click
             float cwch = text_char_width();
             int off = (int)((mx - ib_x - 6.0f) / cwch);
@@ -365,15 +417,40 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
 
         // Gradient cycle button
-        float gr_x = px + 320.0f, gr_y = py + ph - 140.0f, gr_w = 160.0f;
+        float gr_x = px + 320.0f, gr_y = py + ph - 200.0f, gr_w = 160.0f;
         if (mx >= gr_x && mx <= gr_x + gr_w && my >= gr_y && my <= gr_y + 26.0f) {
             g_theme.bg_gradient = (g_theme.bg_gradient + 1) % 3;
             theme_save_persisted();
             return;
         }
 
+        // Font size input
+        float fs_y = py + ph - 160.0f;
+        float fs_ib_x = px + 120.0f, fs_ib_w = 80.0f;
+        if (mx >= fs_ib_x && mx <= fs_ib_x + fs_ib_w && my >= fs_y && my <= fs_y + 26.0f) {
+            g_theme_font_input_on = 1;
+            g_theme_input_on = 0;
+            snprintf(g_theme_font_input, sizeof(g_theme_font_input), "%.1f", g_theme.font_size);
+            g_theme_font_cursor = (int)strlen(g_theme_font_input);
+            return;
+        }
+
+        // Font path chooser button
+        float fp_y = py + ph - 120.0f;
+        if (mx >= px + 390.0f && mx <= px + 480.0f && my >= fp_y && my <= fp_y + 26.0f) {
+            char path[1024] = "";
+            if (open_file_dialog(path, sizeof(path),
+                                  "Font Files (*.ttf)\0*.ttf\0All Files (*.*)\0*.*\0")) {
+                strncpy(g_theme.font_path, path, sizeof(g_theme.font_path) - 1);
+                g_theme.font_path[sizeof(g_theme.font_path) - 1] = '\0';
+                theme_apply_font();
+                theme_save_persisted();
+            }
+            return;
+        }
+
         // Bottom-left buttons
-        float btn_y = py + ph - 78.0f;
+        float btn_y = py + ph - 58.0f;
         struct { float x; float w; const char *label; } b[] = {
             { px + 20.0f,   72.0f, "Load..." },
             { px + 104.0f,  92.0f, "Save As..." },
@@ -390,7 +467,8 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
                         else {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "Loaded %s", g_theme.name);
-                            g_theme_sel = -1; g_theme_input_on = 0;
+                            g_theme_sel = -1; g_theme_input_on = 0; g_theme_font_input_on = 0;
+                            theme_apply_font();
                             theme_save_persisted();
                         }
                     }
@@ -411,8 +489,9 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                 } else {
                     theme_reset();
                     snprintf(g_theme_msg, sizeof(g_theme_msg), "Defaults restored");
+                    theme_apply_font();
                     theme_save_persisted();
-                    g_theme_sel = -1; g_theme_input_on = 0;
+                    g_theme_sel = -1; g_theme_input_on = 0; g_theme_font_input_on = 0;
                 }
                 return;
             }
@@ -423,6 +502,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         // Click inside modal but not on a widget: unfocus the input
         g_theme_input_on = 0;
+        g_theme_font_input_on = 0;
         return;
     }
 
@@ -522,8 +602,8 @@ static void draw_about(void) {
     float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
 
     draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
-    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
-    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+    draw_rect(px, py, pw, ph, COLOR_MODAL_BACKGROUND, 1.0f);
+    draw_rect(px, py, pw, 1.0f, COLOR_MODAL_BORDER, 1.0f);
 
     draw_text("Rick's Minimal Gap Buffer Editor", px + 16, py + 28.0f, COLOR_TEXT);
     draw_text("Version " RMGBE_VERSION, px + 16, py + 54.0f, 0.7f, 0.7f, 0.7f);
@@ -541,8 +621,8 @@ static void draw_theme_editor(void) {
     float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
 
     draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
-    draw_rect(px, py, pw, ph, 30/255.0f, 30/255.0f, 30/255.0f, 1.0f);
-    draw_rect(px, py, pw, 1.0f, 0.4f, 0.4f, 0.45f, 1.0f);
+    draw_rect(px, py, pw, ph, COLOR_MODAL_BACKGROUND, 1.0f);
+    draw_rect(px, py, pw, 1.0f, COLOR_MODAL_BORDER, 1.0f);
 
     draw_text("Theme Editor", px + 16, py + 28.0f, COLOR_TEXT);
 
@@ -581,7 +661,7 @@ static void draw_theme_editor(void) {
     draw_rect(ib_x, ib_y, ib_w, ib_h, 0, 0, 0, 0.6f);
     draw_rect(ib_x, ib_y, ib_w, 1.0f, g_theme_input_on ? 0.9f : 0.35f,
               g_theme_input_on ? 0.9f : 0.35f, g_theme_input_on ? 0.9f : 0.4f, 1.0f);
-    draw_rect(ib_x, ib_y + ib_h - 1.0f, ib_w, 1.0f, 0.35f, 0.35f, 0.4f, 1.0f);
+    draw_rect(ib_x, ib_y + ib_h - 1.0f, ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
 
     // Input text with caret
     {
@@ -597,19 +677,42 @@ static void draw_theme_editor(void) {
     // Gradient cycle button
     const char *gl = g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "Gradient: Vertical" :
                      g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "Gradient: Horizontal" : "Gradient: None";
-    draw_rect(px + 320.0f, py + ph - 140.0f, 160.0f, 26.0f, COLOR_BUTTON, 0.5f);
-    draw_text(gl, px + 332.0f, py + ph - 122.0f, COLOR_TEXT);
+    draw_rect(px + 320.0f, py + ph - 200.0f, 160.0f, 26.0f, COLOR_BUTTON, 0.5f);
+    draw_text(gl, px + 332.0f, py + ph - 182.0f, COLOR_TEXT);
+
+    // Font size input
+    float fs_y = py + ph - 160.0f;
+    draw_text("Font size:", px + 20.0f, fs_y + 18.0f, COLOR_TEXT);
+    float fs_ib_x = px + 120.0f, fs_ib_w = 80.0f;
+    draw_rect(fs_ib_x, fs_y, fs_ib_w, 26.0f, 0, 0, 0, 0.6f);
+    draw_rect(fs_ib_x, fs_y, fs_ib_w, 1.0f, g_theme_font_input_on ? 0.9f : 0.35f,
+              g_theme_font_input_on ? 0.9f : 0.35f, g_theme_font_input_on ? 0.9f : 0.4f, 1.0f);
+    draw_rect(fs_ib_x, fs_y + 25.0f, fs_ib_w, 1.0f, COLOR_MODAL_BORDER, 1.0f);
+    draw_text(g_theme_font_input, fs_ib_x + 6.0f, fs_y + 18.0f, COLOR_TEXT);
+    if (g_theme_font_input_on && ((int)(glfwGetTime() * 2.0) & 1)) {
+        float cx = fs_ib_x + 6.0f + g_theme_font_cursor * chw;
+        draw_rect(cx, fs_y + 4.0f, 1.5f, 18.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
+    }
+
+    // Font path chooser
+    float fp_y = py + ph - 120.0f;
+    draw_text("Font:", px + 20.0f, fp_y + 18.0f, COLOR_TEXT);
+    const char *fp_label = g_theme.font_path[0] ? g_theme.font_path : "(embedded)";
+    draw_rect(px + 80.0f, fp_y, 300.0f, 26.0f, COLOR_BUTTON, 0.5f);
+    draw_text(fp_label, px + 88.0f, fp_y + 18.0f, COLOR_TEXT);
+    draw_rect(px + 390.0f, fp_y, 90.0f, 26.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Choose...", px + 398.0f, fp_y + 18.0f, COLOR_TEXT);
 
     // Hint / message line
     if (g_theme_msg[0])
-        draw_text(g_theme_msg, px + 20.0f, py + ph - 102.0f, 0.8f, 0.8f, 0.5f);
+        draw_text(g_theme_msg, px + 20.0f, py + ph - 82.0f, 0.8f, 0.8f, 0.5f);
     else if (g_theme_sel >= 0)
-        draw_text("Type #RRGGBB or R,G,B then press Enter", px + 20.0f, py + ph - 102.0f, 0.55f, 0.55f, 0.55f);
+        draw_text("Type #RRGGBB or R,G,B then press Enter", px + 20.0f, py + ph - 82.0f, 0.55f, 0.55f, 0.55f);
     else
-        draw_text("Click a color to edit", px + 20.0f, py + ph - 102.0f, 0.55f, 0.55f, 0.55f);
+        draw_text("Click a color to edit", px + 20.0f, py + ph - 82.0f, 0.55f, 0.55f, 0.55f);
 
     // ---- Bottom buttons ----
-    float btn_y = py + ph - 78.0f;
+    float btn_y = py + ph - 58.0f;
     struct { float x; float w; const char *label; } b[] = {
         { px + 20.0f,   72.0f, "Load..." },
         { px + 104.0f,  92.0f, "Save As..." },
@@ -643,13 +746,13 @@ int main(void) {
                                   IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
 #endif
 
-    text_renderer_init_embedded(16.0f);
     text_renderer_set_win_size(g_win_w, g_win_h);
 
     editor_init(&g_editor);
     fp_init(&g_fp);
     theme_init();
     theme_load_persisted();
+    theme_apply_font();
 
     char cwd[512];
 #ifdef _WIN32
@@ -693,7 +796,7 @@ int main(void) {
         fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h, 0, 0, 0);
 
         // Line between sidebar and editor
-        draw_rect(sidebar_w, editor_y, 1.0f, editor_h, 0.3f, 0.3f, 0.35f, 1.0f);
+        draw_rect(sidebar_w, editor_y, 1.0f, editor_h, COLOR_MODAL_BORDER, 1.0f);
 
         // Editor
         g_editor_x = sidebar_w + 1.0f;
@@ -707,7 +810,7 @@ int main(void) {
 
         // Green border on terminal when it has focus
         if (g_focus == 1)
-            draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, 0.2f, 0.8f, 0.4f, 1.0f);
+            draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
 
         draw_about();
         draw_theme_editor();

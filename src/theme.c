@@ -1,4 +1,5 @@
 #include "theme.h"
+#include "text_renderer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,31 @@ void theme_init(void) {
     set_color(&g_theme.comment,        106, 106, 106);
     set_color(&g_theme.preproc,        198, 120, 221);
     set_color(&g_theme.operatorc,       86, 156, 214);
+
+    // File panel (from file_panel.c hardcoded literals)
+    set_color(&g_theme.fp_background,  31,  31,  38);   // 0.12,0.12,0.15
+    set_color(&g_theme.fp_selection,   51, 102, 153);   // 0.2,0.4,0.6
+    set_color(&g_theme.fp_text,       217, 217, 217);   // 0.85,0.85,0.85 (file text)
+    set_color(&g_theme.fp_folder,     230, 191,  77);   // 0.9,0.75,0.3  (folder text)
+
+    // Terminal (from terminal.c hardcoded literals)
+    set_color(&g_theme.term_background,  20,  20,  26); // 0.08,0.08,0.10
+    set_color(&g_theme.term_border,      51, 153, 255); // 0.2,0.6,1.0  (top border)
+    set_color(&g_theme.term_text,       204, 230, 204); // 0.8,0.9,0.8  (output text)
+    set_color(&g_theme.term_input_bg,    13,  13,  18); // 0.05,0.05,0.07
+
+    // Modal (from main.c hardcoded literals: 30/255)
+    set_color(&g_theme.modal_background, 30,  30,  30);
+    set_color(&g_theme.modal_border,    102, 102, 115); // 0.4,0.4,0.45
+
+    // Search bar (from editor.c hardcoded literals)
+    set_color(&g_theme.search_bar_bg,    38,  38,  46); // 0.15,0.15,0.18
+    set_color(&g_theme.search_match,   255, 191,   0); // orange
+    set_color(&g_theme.search_match_cur,255, 217,   0); // brighter orange
+
+    // Font
+    g_theme.font_size = 16.0f;
+    g_theme.font_path[0] = '\0';
 }
 
 void theme_reset(void) { theme_init(); }
@@ -113,8 +139,21 @@ static EntryDef s_entries[] = {
     { "string",         "Strings",         &g_theme.string },
     { "number",         "Numbers",         &g_theme.number },
     { "comment",        "Comments",        &g_theme.comment },
-    { "preprocessor",   "Preprocessor",    &g_theme.preproc },
-    { "operator",       "Operators",       &g_theme.operatorc },
+    { "preprocessor",       "Preprocessor",       &g_theme.preproc },
+    { "operator",           "Operators",          &g_theme.operatorc },
+    { "fp_background",      "File Panel BG",      &g_theme.fp_background },
+    { "fp_selection",       "File Panel Select",   &g_theme.fp_selection },
+    { "fp_text",            "File Panel Text",    &g_theme.fp_text },
+    { "fp_folder",          "File Panel Folders",  &g_theme.fp_folder },
+    { "term_background",    "Terminal BG",        &g_theme.term_background },
+    { "term_border",        "Terminal Border",    &g_theme.term_border },
+    { "term_text",          "Terminal Text",      &g_theme.term_text },
+    { "term_input_bg",      "Terminal Input BG",  &g_theme.term_input_bg },
+    { "modal_background",   "Modal BG",           &g_theme.modal_background },
+    { "modal_border",       "Modal Border",       &g_theme.modal_border },
+    { "search_bar_bg",      "Search Bar BG",      &g_theme.search_bar_bg },
+    { "search_match",       "Search Match",       &g_theme.search_match },
+    { "search_match_cur",   "Search Match (Cur)", &g_theme.search_match_cur },
 };
 
 #define ENTRY_COUNT ((int)(sizeof(s_entries) / sizeof(s_entries[0])))
@@ -175,6 +214,12 @@ int theme_load_file(const char *path, char *err, int err_size) {
             if (!strcmp(val, "vertical"))      g_theme.bg_gradient = THEME_GRADIENT_VERTICAL;
             else if (!strcmp(val, "horizontal")) g_theme.bg_gradient = THEME_GRADIENT_HORIZONTAL;
             else                                 g_theme.bg_gradient = THEME_GRADIENT_NONE;
+        } else if (!strcmp(key, "font_size")) {
+            float sz = 0;
+            if (sscanf(val, "%f", &sz) == 1 && sz > 0)
+                g_theme.font_size = sz;
+        } else if (!strcmp(key, "font_path")) {
+            snprintf(g_theme.font_path, sizeof(g_theme.font_path), "%s", val);
         } else {
             int found = 0;
             for (int i = 0; i < ENTRY_COUNT; i++) {
@@ -211,6 +256,10 @@ int theme_save_file(const char *path, char *err, int err_size) {
     fprintf(f, "background_gradient = %s\n",
             g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "vertical" :
             g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "horizontal" : "none");
+    fprintf(f, "font_size = %.1f\n", g_theme.font_size);
+    if (g_theme.font_path[0])
+        fprintf(f, "font_path = %s\n", g_theme.font_path);
+    fprintf(f, "\n");
 
     for (int i = 0; i < ENTRY_COUNT; i++) {
         char hex[16];
@@ -270,4 +319,13 @@ void theme_save_persisted(void) {
     ensure_dir(path);
     char err[256];
     theme_save_file(path, err, sizeof(err));
+}
+
+void theme_apply_font(void) {
+    text_renderer_free();
+    if (g_theme.font_path[0]) {
+        text_renderer_init(g_theme.font_path, g_theme.font_size);
+    } else {
+        text_renderer_init_embedded(g_theme.font_size);
+    }
 }

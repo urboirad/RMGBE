@@ -37,6 +37,31 @@ typedef struct {
     ThemeColor comment;
     ThemeColor preproc;
     ThemeColor operatorc;       // 'operator' is a C++-ish word, avoid
+
+    // File panel
+    ThemeColor fp_background;
+    ThemeColor fp_selection;
+    ThemeColor fp_text;
+    ThemeColor fp_folder;
+
+    // Terminal
+    ThemeColor term_background;
+    ThemeColor term_border;
+    ThemeColor term_text;
+    ThemeColor term_input_bg;
+
+    // Modal (about / theme editor)
+    ThemeColor modal_background;
+    ThemeColor modal_border;
+
+    // Editor extras
+    ThemeColor search_bar_bg;
+    ThemeColor search_match;
+    ThemeColor search_match_cur;
+
+    // Font (non-color)
+    float font_size;
+    char  font_path[512];
 } Theme;
 
 extern Theme g_theme;
@@ -57,6 +82,10 @@ int theme_parse_color(const char *s, ThemeColor *out);
 
 // Format a color as "#RRGGBB" into buf.
 void theme_color_to_hex(const ThemeColor *c, char *buf, int buf_size);
+
+// Apply the theme's font settings (re-initializes the text renderer).
+// Falls back to embedded font if font_path is empty or fails to load.
+void theme_apply_font(void);
 
 // ---- Editor UI metadata ------------------------------------------------------
 // Entries describe each editable color for the theme editor modal.

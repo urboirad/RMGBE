@@ -1,5 +1,6 @@
 #include "file_panel.h"
 #include "text_renderer.h"
+#include "colors.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
 #include <string.h>
@@ -188,7 +189,7 @@ static void toggle_dir(FilePanel *fp, int idx) {
 
 void fp_render(FilePanel *fp, float x, float y, float w, float h) {
     // Background
-    draw_rect(x, y, w, h, 0.12f, 0.12f, 0.15f, 1.0f);
+    draw_rect(x, y, w, h, COLOR_FP_BACKGROUND, 1.0f);
 
     float ch = text_char_height();
     float row = ch + 4.0f;
@@ -204,7 +205,7 @@ void fp_render(FilePanel *fp, float x, float y, float w, float h) {
         FileEntry *e = &fp->entries[i];
 
         if (i == fp->selected)
-            draw_rect(x, ty, w, row, 0.2f, 0.4f, 0.6f, 0.5f);
+            draw_rect(x, ty, w, row, COLOR_FP_SELECTION, 0.5f);
 
         char label[FP_NAME_LEN * 2 + 8];
         char indent[32] = "";
@@ -212,10 +213,10 @@ void fp_render(FilePanel *fp, float x, float y, float w, float h) {
         const char *arrow = e->is_dir ? (e->expanded ? "▾ " : "▸ ") : "  ";
         snprintf(label, sizeof(label), "%s%s%s", indent, arrow, e->name);
 
-        float fr = e->is_dir ? 0.9f : 0.85f;
-        float fg = e->is_dir ? 0.75f : 0.85f;
-        float fb = e->is_dir ? 0.3f  : 0.85f;
-        draw_text(label, x + 6, ty + ch * 0.85f, fr, fg, fb);
+        if (e->is_dir)
+            draw_text(label, x + 6, ty + ch * 0.85f, COLOR_FP_FOLDER);
+        else
+            draw_text(label, x + 6, ty + ch * 0.85f, COLOR_FP_TEXT);
         ty += row;
     }
 }
