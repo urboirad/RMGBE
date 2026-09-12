@@ -50,6 +50,7 @@ void startup_audio_play(const char *exe_dir) {
     while ((unsigned)pos < size) {
         short pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
         int samples = mp3dec_decode_frame(&dec, mp3_buf + pos, (int)(size - pos), pcm, &info);
+        if (info.frame_bytes <= 0) break;
         pos += info.frame_bytes;
         if (samples <= 0) continue;
 
