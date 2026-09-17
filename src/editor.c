@@ -8,6 +8,12 @@
 #include <math.h>
 #include "colors.h"
 #include <ctype.h>
+#ifdef _WIN32
+#include <sys/types.h>
+#include <sys/stat.h>
+#else
+#include <sys/stat.h>
+#endif
 
 #define LERP_SPEED 18.0f
 #define GUTTER_W(cw) (4.0f + 4.0f * (cw) + 8.0f)
@@ -16,6 +22,7 @@ static char gb_char_logical(GapBuffer *gb, int pos);
 static int gb_total_logical(GapBuffer *gb);
 static void editor_rebuild_lines(Editor *e);
 static int offset_of(Editor *e, int row, int col);
+static double get_file_mtime(const char *path);
 
 // ---- Search ------------------------------------------------------------------
 
@@ -236,6 +243,8 @@ void editor_open_file(Editor *e, const char *path) {
     e->smooth.vis_y = 0;
     e->smooth.x = e->smooth.y = 0;
     e->dirty = 0;
+    e->external_change = 0;
+    e->file_mtime = get_file_mtime(path);
     undo_clear(&e->undo);
     undo_clear(&e->redo);
 }
@@ -261,6 +270,8 @@ void editor_new_file(Editor *e) {
     e->smooth.vis_x = 0;
     e->smooth.vis_y = 0;
     e->dirty = 0;
+    e->file_mtime = 0;
+    e->external_change = 0;
     e->selecting = 0;
     e->selection_start = 0;
     e->selection_end = 0;
@@ -954,4 +965,36 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
              e->cursor_row + 1, e->cursor_col + 1);
     draw_rect(x, y + h - 20.0f, w, 20.0f, COLOR_TOOLBAR, 1.0f);
     draw_text(status, x + 4, y + h - 4.0f, COLOR_TEXT);
+}
+
+// ---- Hot reload --------------------------------------------------------------
+static double get_file_mtime(const char *path) {
+    if (!path || !path[0]) return 0;
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+#ifdef _WIN32
+    return (double)st.st_mtime;
+#else
+    return (double)st.st_mtime + (double)st.st_mtim.tv_nsec * 1e-9;
+#endif
+}
+
+void editor_check_external_change(Editor *e) {
+    if (!e->filepath[0]) { e->external_change = 0; return; }
+    double mt = get_file_mtime(e->filepath);
+    if (e->file_mtime == 0) { e->file_mtime = mt; return; }
+    if (mt > e->file_mtime) e->external_change = 1;
+}
+
+void editor_reload_file(Editor *e) {
+    if (!e->filepath[0]) return;
+    char path[512];
+    strncpy(path, e->filepath, sizeof(path));
+    editor_open_file(e, path);
+    e->external_change = 0;
+}
+
+void editor_dismiss_external_change(Editor *e) {
+    e->external_change = 0;
+    e->file_mtime = get_file_mtime(e->filepath);
 }

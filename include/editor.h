@@ -67,6 +67,9 @@ typedef struct {
     int   search_match_cur;  // index of currently focused match
     int   search_matches[SEARCH_MAX_MATCHES]; // buffer offsets of matches
     int   search_prev_len;   // tracks query length to avoid redundant re-search
+    // Hot reload
+    double file_mtime;       // last known modification time (0 = no file)
+    int    external_change;  // set when file changed on disk
 } Editor;
 
 void editor_init(Editor *e);
@@ -85,5 +88,8 @@ void editor_mouse_release(Editor *e);
 void editor_scroll(Editor *e, float yoffset);
 void editor_undo(Editor *e);
 void editor_redo(Editor *e);
+void editor_check_external_change(Editor *e);
+void editor_reload_file(Editor *e);
+void editor_dismiss_external_change(Editor *e);
 
 #endif

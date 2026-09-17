@@ -51,6 +51,7 @@ static float  g_fps_value = 0.0f;
 // Popups
 static int g_about_open = 0;
 static int g_theme_open = 0;
+static int g_reload_prompt = 0;  // hot-reload prompt visible
 
 // Theme editor state
 static int    g_theme_sel      = -1;   // selected color entry index, -1 = none
@@ -291,6 +292,16 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
             }
             return; // swallow all other keys while modal is open
         }
+        if (g_reload_prompt) {
+            if (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_ENTER) {
+                if (key == GLFW_KEY_ENTER)
+                    editor_reload_file(&g_editor);
+                else
+                    editor_dismiss_external_change(&g_editor);
+                g_reload_prompt = 0;
+            }
+            return;
+        }
 
         // Tab switches focus between editor and terminal
         if (key == GLFW_KEY_TAB && (mods & GLFW_MOD_CONTROL)) {
@@ -374,6 +385,26 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         if (mx < px || mx > px + pw || my < py || my > py + ph) {
             g_about_open = 0; return;
+        }
+        return;
+    }
+    if (g_reload_prompt) {
+        float pw = 420.0f, ph = 120.0f;
+        float px = ((float)g_win_w - pw) * 0.5f, py = ((float)g_win_h - ph) * 0.5f;
+        if (mx >= px + 16 && mx <= px + 106 && my >= py + ph - 40 && my <= py + ph - 12) {
+            editor_reload_file(&g_editor);
+            g_reload_prompt = 0;
+            return;
+        }
+        if (mx >= px + 120 && mx <= px + 210 && my >= py + ph - 40 && my <= py + ph - 12) {
+            editor_dismiss_external_change(&g_editor);
+            g_reload_prompt = 0;
+            return;
+        }
+        if (mx < px || mx > px + pw || my < py || my > py + ph) {
+            editor_dismiss_external_change(&g_editor);
+            g_reload_prompt = 0;
+            return;
         }
         return;
     }
@@ -521,14 +552,18 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
         }
         if (mx >= 96 && mx <= 208) {
             char path[512] = "";
-            if (open_folder_dialog(path, sizeof(path)))
+            if (open_folder_dialog(path, sizeof(path))) {
                 fp_open_dir(&g_fp, path);
+                term_set_cwd(&g_term, path);
+            }
         }
         if (mx >= 216 && mx <= 312) {
             char path[512] = "";
             if (open_file_dialog(path, sizeof(path),
-                                 "Source Files (*.c;*.h;*.cpp;*.txt)\0*.c;*.h;*.cpp;*.txt\0All Files (*.*)\0*.*\0"))
+                                 "Source Files (*.c;*.h;*.cpp;*.txt)\0*.c;*.h;*.cpp;*.txt\0All Files (*.*)\0*.*\0")) {
                 editor_open_file(&g_editor, path);
+                term_set_cwd(&g_term, path);
+            }
         }
         if (mx >= 320 && mx <= 380) {
             if (!g_editor.filepath[0]) {
@@ -563,7 +598,10 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
     // Sidebar click
     const char *picked = fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h,
                                    1, (float)mx, (float)my);
-    if (picked) editor_open_file(&g_editor, picked);
+    if (picked) {
+        editor_open_file(&g_editor, picked);
+        term_set_cwd(&g_term, picked);
+    }
 }
 
 static void cb_cursor_pos(GLFWwindow *win, double mx, double my) {
@@ -619,6 +657,31 @@ static void draw_toolbar(float w) {
 }
 
 // ---- Modals ----------------------------------------------------------------
+static void draw_reload_prompt(void) {
+    if (!g_reload_prompt) return;
+    float cw = (float)g_win_w, ch = (float)g_win_h;
+    float pw = 420.0f, ph = 120.0f;
+    float px = (cw - pw) * 0.5f, py = (ch - ph) * 0.5f;
+
+    draw_rect(0, 0, cw, ch, 0, 0, 0, 0.5f);
+    draw_rect(px, py, pw, ph, COLOR_MODAL_BACKGROUND, 1.0f);
+    draw_rect(px, py, pw, 1.0f, COLOR_MODAL_BORDER, 1.0f);
+
+    draw_text("File changed on disk", px + 16, py + 28.0f, COLOR_TEXT);
+    const char *name = g_editor.filepath;
+    const char *slash = strrchr(name, '\\');
+    if (!slash) slash = strrchr(name, '/');
+    if (slash) name = slash + 1;
+    draw_text(name, px + 16, py + 50.0f, 0.7f, 0.7f, 0.7f);
+
+    // Reload button
+    draw_rect(px + 16, py + ph - 40, 90.0f, 28.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Reload", px + 28, py + ph - 21.0f, COLOR_TEXT);
+    // Dismiss button
+    draw_rect(px + 120, py + ph - 40, 90.0f, 28.0f, COLOR_BUTTON, 0.5f);
+    draw_text("Dismiss", px + 130, py + ph - 21.0f, COLOR_TEXT);
+}
+
 static void draw_about(void) {
     if (!g_about_open) return;
     float cw = (float)g_win_w, ch = (float)g_win_h;
@@ -857,6 +920,9 @@ int main(void) {
         // Editor
         g_editor_x = sidebar_w + 1.0f;
         g_editor_y = editor_y;
+        editor_check_external_change(&g_editor);
+        if (g_editor.external_change && !g_reload_prompt)
+            g_reload_prompt = 1;
         editor_update(&g_editor, dt);
         editor_render(&g_editor, g_editor_x, g_editor_y, editor_w, editor_h);
 
@@ -870,6 +936,7 @@ int main(void) {
 
         draw_about();
         draw_theme_editor();
+        draw_reload_prompt();
 
         // FPS counter
         g_fps_frame_count++;

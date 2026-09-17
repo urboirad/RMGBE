@@ -34,5 +34,6 @@ void term_poll_output(Terminal *t);
 void term_render(Terminal *t, float x, float y, float w, float h);
 void term_char_input(Terminal *t, unsigned int codepoint);
 void term_key_input(Terminal *t, int key);
+void term_set_cwd(Terminal *t, const char *path);
 
 #endif

@@ -127,6 +127,16 @@ void term_poll_output(Terminal *t) {
 
 void term_send_input(Terminal *t) {
     if (t->input_len == 0) return;
+
+    // Handle "clear" / "cls" locally
+    if ((strcmp(t->input_buf, "clear") == 0 || strcmp(t->input_buf, "cls") == 0)) {
+        t->line_count = 0;
+        t->lines[0][0] = '\0';
+        t->input_len = 0;
+        t->input_buf[0] = '\0';
+        return;
+    }
+
     t->input_buf[t->input_len++] = '\n';
 #ifdef _WIN32
     if (!t->stdin_write) return;
@@ -176,4 +186,30 @@ void term_render(Terminal *t, float x, float y, float w, float h) {
     snprintf(prompt, sizeof(prompt), "> %s_", t->input_buf);
     draw_rect(x, y + h - row - 4.0f, w, row + 4.0f, COLOR_TERM_INPUT_BG, 1.0f);
     draw_text(prompt, x + 6.0f, y + h - 4.0f, 0.4f, 1.0f, 0.5f);
+}
+
+void term_set_cwd(Terminal *t, const char *path) {
+    if (!path || !path[0]) return;
+    // Extract directory from file path
+    char dir[1024];
+    strncpy(dir, path, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = '\0';
+    char *sep = strrchr(dir, '\\');
+    if (!sep) sep = strrchr(dir, '/');
+    if (sep) *sep = '\0';
+    else return;
+
+    // Send cd command to the shell
+#ifdef _WIN32
+    if (!t->stdin_write) return;
+    char cmd[1100];
+    snprintf(cmd, sizeof(cmd), "cd /d \"%s\"\n", dir);
+    DWORD written;
+    WriteFile(t->stdin_write, cmd, (DWORD)strlen(cmd), &written, NULL);
+#else
+    if (t->stdin_fd <= 0) return;
+    char cmd[1100];
+    snprintf(cmd, sizeof(cmd), "cd '%s'\n", dir);
+    write(t->stdin_fd, cmd, strlen(cmd));
+#endif
 }
