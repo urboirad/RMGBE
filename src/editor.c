@@ -226,6 +226,8 @@ void editor_open_file(Editor *e, const char *path) {
     if (!f) return;
 
     // Clear old content before loading new file
+    undo_clear(&e->undo);
+    undo_clear(&e->redo);
     free(e->gb.buffer);
     init_buffer(&e->gb, 4096);
     e->cursor_col = e->cursor_row = 0;
@@ -245,8 +247,6 @@ void editor_open_file(Editor *e, const char *path) {
     e->dirty = 0;
     e->external_change = 0;
     e->file_mtime = get_file_mtime(path);
-    undo_clear(&e->undo);
-    undo_clear(&e->redo);
 }
 
 void editor_save_file(Editor *e) {
@@ -258,6 +258,7 @@ void editor_save_file(Editor *e) {
     fwrite(gb->buffer + gb->gap_end, 1, gb->total_size - gb->gap_end, f);
     fclose(f);
     e->dirty = 0;
+    e->file_mtime = get_file_mtime(e->filepath);
 }
 
 void editor_new_file(Editor *e) {
