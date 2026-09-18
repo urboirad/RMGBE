@@ -70,6 +70,7 @@ typedef struct {
     // Hot reload
     double file_mtime;       // last known modification time (0 = no file)
     int    external_change;  // set when file changed on disk
+    float  saved_flash;      // seconds remaining for "Saved" flash
 } Editor;
 
 void editor_init(Editor *e);

@@ -259,6 +259,7 @@ void editor_save_file(Editor *e) {
     fclose(f);
     e->dirty = 0;
     e->file_mtime = get_file_mtime(e->filepath);
+    e->saved_flash = 1.5f;
 }
 
 void editor_new_file(Editor *e) {
@@ -785,6 +786,7 @@ void editor_update(Editor *e, float dt) {
         ensure_cursor_visible(e);
         e->needs_scroll_to_cursor = 0;
     }
+    if (e->saved_flash > 0) e->saved_flash -= dt;
 }
 
 void editor_render(Editor *e, float x, float y, float w, float h) {
@@ -961,9 +963,14 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     const char *mode_str = e->mode == MODE_INSERT ? "INSERT" :
                            e->mode == MODE_VISUAL ? "VISUAL" : "NORMAL";
     char status[640];
-    snprintf(status, sizeof(status), " %s  %s  %d:%d",
-             mode_str, e->filepath[0] ? e->filepath : "[No File]",
-             e->cursor_row + 1, e->cursor_col + 1);
+    if (e->saved_flash > 0)
+        snprintf(status, sizeof(status), " %s  %s  %d:%d  Saved",
+                 mode_str, e->filepath[0] ? e->filepath : "[No File]",
+                 e->cursor_row + 1, e->cursor_col + 1);
+    else
+        snprintf(status, sizeof(status), " %s  %s  %d:%d",
+                 mode_str, e->filepath[0] ? e->filepath : "[No File]",
+                 e->cursor_row + 1, e->cursor_col + 1);
     draw_rect(x, y + h - 20.0f, w, 20.0f, COLOR_TOOLBAR, 1.0f);
     draw_text(status, x + 4, y + h - 4.0f, COLOR_TEXT);
 }
