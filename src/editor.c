@@ -858,7 +858,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     }
 
     float gutter = GUTTER_W(cw);
-    float cy = y + e->cursor_row * row - e->scroll_y + (row - ch) * 0.5f;
+    float cy = y + e->smooth.vis_y - e->scroll_y + (row - ch) * 0.5f;
 
     // Render text line by line
     GapBuffer *gb = &e->gb;
@@ -872,7 +872,7 @@ void editor_render(Editor *e, float x, float y, float w, float h) {
     if (e->syntax_cache_dirty) editor_rebuild_syntax_cache(e);
 
     // Build cursor line and draw cursor before text batch
-    float cursor_x = x + gutter + e->cursor_col * cw;
+    float cursor_x = x + e->smooth.vis_x;
     if (e->mode == MODE_INSERT)
         draw_rect(cursor_x, cy, 2.0f, ch, COLOR_CURSOR_HIGHLIGHT, 0.9f);
     else
