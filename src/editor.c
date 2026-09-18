@@ -763,9 +763,28 @@ void editor_char(Editor *e, unsigned int cp) {
     if (cp < 32 || cp > 126) return;
     undo_clear_redo(e);
     char ch = (char)cp;
-    undo_push(&e->undo, UNDO_INSERT, e->gb.gap_start, &ch, 1, e);
-    insert_char(&e->gb, ch);
-    e->cursor_col++;
+
+    // Auto-close pairs: insert both chars, cursor stays between
+    char close = 0;
+    if (ch == '"')  close = '"';
+    else if (ch == '(') close = ')';
+    else if (ch == '[') close = ']';
+    else if (ch == '{') close = '}';
+    else if (ch == '\'') close = '\'';
+
+    if (close) {
+        char pair[3] = { ch, close, '\0' };
+        undo_push(&e->undo, UNDO_INSERT, e->gb.gap_start, pair, 2, e);
+        insert_char(&e->gb, ch);
+        insert_char(&e->gb, close);
+        // Move cursor back between the two chars
+        move_cursor(&e->gb, e->gb.gap_start - 1);
+        e->cursor_col++;
+    } else {
+        undo_push(&e->undo, UNDO_INSERT, e->gb.gap_start, &ch, 1, e);
+        insert_char(&e->gb, ch);
+        e->cursor_col++;
+    }
     e->dirty = 1;
     e->lines_dirty = 1;
     e->needs_scroll_to_cursor = 1;
