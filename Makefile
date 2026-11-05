@@ -1,14 +1,27 @@
-.PHONY: all debug release clean
+# Thin wrapper around CMake.  CMakeLists.txt is the single source of truth.
+BUILD_DIR ?= build
+CONFIG    ?= Release
 
-all: release
+.PHONY: all build debug release test run clean
+
+all: build
+
+build:
+	cmake -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	cmake --build $(BUILD_DIR) --parallel
 
 debug:
-	@mkdir -p build-debug
-	cd build-debug && cmake -DCMAKE_BUILD_TYPE=Debug .. && $(MAKE)
+	$(MAKE) build BUILD_DIR=build-debug CONFIG=Debug
 
 release:
-	@mkdir -p build-release
-	cd build-release && cmake -DCMAKE_BUILD_TYPE=Release .. && $(MAKE)
+	$(MAKE) build BUILD_DIR=build-release CONFIG=Release
+
+test:
+	$(MAKE) build BUILD_DIR=build-test CONFIG=Debug
+	ctest --test-dir build-test --output-on-failure
+
+run: build
+	./$(BUILD_DIR)/bin/RMGBE
 
 clean:
-	rm -rf build-debug build-release
+	rm -rf build build-debug build-release build-test

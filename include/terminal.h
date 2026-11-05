@@ -30,7 +30,8 @@ typedef struct {
 void term_init(Terminal *t);
 void term_free(Terminal *t);
 void term_send_input(Terminal *t);
-void term_poll_output(Terminal *t);
+/* Poll the shell pipe.  Returns 1 when new output was consumed. */
+int  term_poll_output(Terminal *t);
 void term_render(Terminal *t, float x, float y, float w, float h);
 void term_char_input(Terminal *t, unsigned int codepoint);
 void term_key_input(Terminal *t, int key);

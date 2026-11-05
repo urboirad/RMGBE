@@ -1,5 +1,6 @@
 #include "theme.h"
 #include "text_renderer.h"
+#include "file_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,13 +82,14 @@ static int hexval(char ch) {
 }
 
 int theme_parse_color(const char *s, ThemeColor *out) {
+    if (!s || !out) return 0;
     while (*s == ' ' || *s == '\t') s++;
     if (*s == '#') s++;
 
     // Try hex: exactly 6 hex digits
     int ok = 1;
     for (int i = 0; i < 6; i++) {
-        if (hexval(s[i]) < 0) { ok = 0; break; }
+        if (s[i] == '\0' || hexval(s[i]) < 0) { ok = 0; break; }
     }
     if (ok && !isxdigit((unsigned char)s[6])) {
         int r = hexval(s[0]) * 16 + hexval(s[1]);
@@ -103,6 +105,12 @@ int theme_parse_color(const char *s, ThemeColor *out) {
     int r, g, b;
     char extra;
     if (sscanf(s, "%d ,%d ,%d %c", &r, &g, &b, &extra) >= 3) {
+        if (r < 0) r = 0;
+        if (r > 255) r = 255;
+        if (g < 0) g = 0;
+        if (g > 255) g = 255;
+        if (b < 0) b = 0;
+        if (b > 255) b = 255;
         out->r = r / 255.0f;
         out->g = g / 255.0f;
         out->b = b / 255.0f;
@@ -186,19 +194,34 @@ static char *trim(char *s) {
 }
 
 int theme_load_file(const char *path, char *err, int err_size) {
+    if (err && err_size > 0) err[0] = '\0';
+    if (!path || !path[0]) {
+        if (err && err_size > 0) snprintf(err, (size_t)err_size, "Invalid theme path");
+        return 0;
+    }
     FILE *f = fopen(path, "rb");
     if (!f) {
-        snprintf(err, err_size, "Cannot open '%s'", path);
+        if (err && err_size > 0) snprintf(err, (size_t)err_size, "Cannot open '%s'", path);
         return 0;
     }
 
     Theme saved = g_theme;
     theme_init(); // reset to defaults first
 
-    char line[512];
+    char line[1024];
     int lineno = 0;
+    int too_long = 0;
     while (fgets(line, sizeof(line), f)) {
         lineno++;
+        size_t len = strlen(line);
+        if (len == sizeof(line) - 1 && line[len - 1] != '\n') {
+            too_long = 1;
+            int ch;
+            while ((ch = fgetc(f)) != EOF && ch != '\n') { }
+            if (err && err_size > 0)
+                snprintf(err, (size_t)err_size, "Line %d is too long", lineno);
+            continue;
+        }
         char *s = trim(line);
         if (!*s || *s == '#' || *s == ';') continue;
 
@@ -211,13 +234,16 @@ int theme_load_file(const char *path, char *err, int err_size) {
         if (!strcmp(key, "name")) {
             snprintf(g_theme.name, sizeof(g_theme.name), "%s", val);
         } else if (!strcmp(key, "background_gradient")) {
-            if (!strcmp(val, "vertical"))      g_theme.bg_gradient = THEME_GRADIENT_VERTICAL;
+            if (!strcmp(val, "vertical"))        g_theme.bg_gradient = THEME_GRADIENT_VERTICAL;
             else if (!strcmp(val, "horizontal")) g_theme.bg_gradient = THEME_GRADIENT_HORIZONTAL;
             else                                 g_theme.bg_gradient = THEME_GRADIENT_NONE;
         } else if (!strcmp(key, "font_size")) {
             float sz = 0;
-            if (sscanf(val, "%f", &sz) == 1 && sz > 0)
+            if (sscanf(val, "%f", &sz) == 1) {
+                if (sz < 6.0f) sz = 6.0f;
+                if (sz > 72.0f) sz = 72.0f;
                 g_theme.font_size = sz;
+            }
         } else if (!strcmp(key, "font_path")) {
             snprintf(g_theme.font_path, sizeof(g_theme.font_path), "%s", val);
         } else {
@@ -227,7 +253,9 @@ int theme_load_file(const char *path, char *err, int err_size) {
                     if (!theme_parse_color(val, s_entries[i].color)) {
                         g_theme = saved;
                         fclose(f);
-                        snprintf(err, err_size, "Line %d: bad color '%s'", lineno, val);
+                        if (err && err_size > 0)
+                            snprintf(err, (size_t)err_size, "Line %d: bad color '%s'",
+                                     lineno, val);
                         return 0;
                     }
                     found = 1;
@@ -237,39 +265,53 @@ int theme_load_file(const char *path, char *err, int err_size) {
             if (!found) continue;
         }
     }
+    int read_error = ferror(f);
     fclose(f);
+    if (read_error || too_long) {
+        g_theme = saved;
+        if (err && err_size > 0 && read_error)
+            snprintf(err, (size_t)err_size, "Failed to read '%s'", path);
+        return 0;
+    }
 
-    err[0] = '\0';
+    if (err && err_size > 0) err[0] = '\0';
     return 1;
 }
 
 int theme_save_file(const char *path, char *err, int err_size) {
-    FILE *f = fopen(path, "wb");
-    if (!f) {
-        snprintf(err, err_size, "Cannot write '%s'", path);
+    if (err && err_size > 0) err[0] = '\0';
+    if (!path || !path[0]) {
+        if (err && err_size > 0) snprintf(err, (size_t)err_size, "Invalid theme path");
         return 0;
     }
+    AtomicFile af;
+    if (!atomic_file_open(&af, path, err, err_size)) return 0;
 
-    fprintf(f, "# RMGBE Theme File\n");
-    fprintf(f, "# Colors accept #RRGGBB or R,G,B decimal\n");
-    fprintf(f, "name = %s\n\n", g_theme.name);
-    fprintf(f, "background_gradient = %s\n",
-            g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "vertical" :
-            g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "horizontal" : "none");
-    fprintf(f, "font_size = %.1f\n", g_theme.font_size);
+    int ok = 1;
+    ok &= fprintf(af.fp, "# RMGBE Theme File\n") > 0;
+    ok &= fprintf(af.fp, "# Colors accept #RRGGBB or R,G,B decimal\n") > 0;
+    ok &= fprintf(af.fp, "name = %s\n\n", g_theme.name) > 0;
+    ok &= fprintf(af.fp, "background_gradient = %s\n",
+                  g_theme.bg_gradient == THEME_GRADIENT_VERTICAL   ? "vertical" :
+                  g_theme.bg_gradient == THEME_GRADIENT_HORIZONTAL ? "horizontal" : "none") > 0;
+    ok &= fprintf(af.fp, "font_size = %.1f\n", g_theme.font_size) > 0;
     if (g_theme.font_path[0])
-        fprintf(f, "font_path = %s\n", g_theme.font_path);
-    fprintf(f, "\n");
+        ok &= fprintf(af.fp, "font_path = %s\n", g_theme.font_path) > 0;
+    ok &= fprintf(af.fp, "\n") > 0;
 
-    for (int i = 0; i < ENTRY_COUNT; i++) {
+    for (int i = 0; ok && i < ENTRY_COUNT; i++) {
         char hex[16];
         theme_color_to_hex(s_entries[i].color, hex, sizeof(hex));
-        fprintf(f, "%s = %s\n", s_entries[i].key, hex);
+        ok &= fprintf(af.fp, "%s = %s\n", s_entries[i].key, hex) > 0;
     }
-    fclose(f);
 
-    err[0] = '\0';
-    return 1;
+    if (!ok) {
+        atomic_file_abort(&af);
+        if (err && err_size > 0)
+            snprintf(err, (size_t)err_size, "Failed to write '%s'", path);
+        return 0;
+    }
+    return atomic_file_commit(&af, err, err_size);
 }
 
 // ---- Persisted theme (auto-saved across sessions) ----------------------------
@@ -291,18 +333,35 @@ static void get_persisted_path(char *buf, int buf_size) {
 }
 
 static void ensure_dir(const char *path) {
+    if (!path || !path[0]) return;
 #ifdef _WIN32
     char dir[MAX_PATH];
-    strncpy(dir, path, sizeof(dir) - 1);
-    dir[sizeof(dir) - 1] = '\0';
+    snprintf(dir, sizeof(dir), "%s", path);
     char *sep = strrchr(dir, '\\');
-    if (sep) { *sep = '\0'; CreateDirectoryA(dir, NULL); }
+    if (!sep) return;
+    *sep = '\0';
+    for (char *p = dir + 1; *p; p++) {
+        if (*p == '\\') {
+            *p = '\0';
+            CreateDirectoryA(dir, NULL);
+            *p = '\\';
+        }
+    }
+    CreateDirectoryA(dir, NULL);
 #else
     char dir[1024];
-    strncpy(dir, path, sizeof(dir) - 1);
-    dir[sizeof(dir) - 1] = '\0';
+    snprintf(dir, sizeof(dir), "%s", path);
     char *sep = strrchr(dir, '/');
-    if (sep) { *sep = '\0'; mkdir(dir, 0755); }
+    if (!sep) return;
+    *sep = '\0';
+    for (char *p = dir + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(dir, 0755);
+            *p = '/';
+        }
+    }
+    mkdir(dir, 0755);
 #endif
 }
 
@@ -323,9 +382,13 @@ void theme_save_persisted(void) {
 
 void theme_apply_font(void) {
     text_renderer_free();
+    int ok = 0;
     if (g_theme.font_path[0]) {
-        text_renderer_init(g_theme.font_path, g_theme.font_size);
-    } else {
-        text_renderer_init_embedded(g_theme.font_size);
+        ok = text_renderer_init(g_theme.font_path, g_theme.font_size);
+        if (!ok)
+            fprintf(stderr, "theme: falling back to the embedded font for '%s'\n",
+                    g_theme.font_path);
     }
+    if (!ok)
+        text_renderer_init_embedded(g_theme.font_size);
 }

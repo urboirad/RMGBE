@@ -23,21 +23,16 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
 
       - name: Build
         run: |
-          windres src/resources.rc -o resources.o
-          gcc -Os -DNDEBUG -ffunction-sections -fdata-sections \
-            -fno-unwind-tables -fno-asynchronous-unwind-tables \
-            -Iinclude -Ivendor \
-            main.c src/gap_buffer.c src/text_renderer.c src/editor.c \
-            src/file_panel.c src/terminal.c src/syntax.c src/theme.c \
-            src/startup_audio.c \
-            vendor/tinyfiledialogs.c \
-            resources.o -o RMGBE.exe -s -Wl,--gc-sections \
-            -Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lwinmm -lm
+          cmake -S . -B build -G "MSYS Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build --parallel
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: RMGBE.exe
+          files: build/bin/RMGBE.exe

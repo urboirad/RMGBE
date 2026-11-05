@@ -54,6 +54,7 @@ git remote add upstream https://github.com/urboirad/RMGBE.git
 
 **Windows**
 - [MinGW](https://www.mingw-w64.org/) with GCC (GLFW is bundled in `lib/`)
+- [CMake](https://cmake.org/) 3.15 or newer
 
 **Linux**
 ```bash
@@ -65,23 +66,24 @@ sudo apt install libglfw3-dev cmake
 brew install glfw cmake
 ```
 
-CMake 3.15 or newer is required on Linux and macOS.
+CMake 3.15 or newer is required on all platforms. `CMakeLists.txt` is the single source of truth for compiler flags, source lists, and output paths.
 
 ### 3. Build
 
 **Windows**
+```bat
+build.bat debug      REM with debug symbols (recommended while developing)
+build.bat release    REM optimized build
 ```
-build.bat debug      # with debug symbols (recommended while developing)
-build.bat release    # optimized build
-```
-Output: `output/RMGBE.exe`
+Output: `build\bin\RMGBE.exe`
 
 **Linux / macOS**
 ```bash
 make debug           # recommended while developing
 make release         # optimized build
+make                 # default Release build in build/
 ```
-Output: `build-debug/RMGBE` or `build-release/RMGBE`
+Output: `build-debug/bin/RMGBE`, `build-release/bin/RMGBE`, or `build/bin/RMGBE`
 
 ## Project Layout
 
@@ -90,11 +92,13 @@ Output: `build-debug/RMGBE` or `build-release/RMGBE`
 | `main.c` | Program entry point |
 | `src/` | Editor source code |
 | `include/` | Header files |
+| `tests/` | Unit tests and renderer stubs (`ctest`) |
 | `lib/` | Bundled libraries (e.g., GLFW for Windows) |
 | `vendor/` | Third-party code |
 | `assets/` | Embedded resources such as the built-in font |
 | `.github/workflows/` | CI configuration |
-| `CMakeLists.txt`, `Makefile`, `build.bat` | Build scripts |
+| `CMakeLists.txt` | Single source of truth for builds and tests |
+| `Makefile`, `build.bat` | Thin CMake wrappers for convenience |
 | `compile_flags.txt` | Compiler flags for editor tooling (e.g., clangd) |
 
 ## Making Changes
@@ -131,15 +135,21 @@ Please match the style of the surrounding code. In general:
 
 ## Testing Your Changes
 
-There is no automated test suite yet, so manual testing matters. Before submitting, please:
+RMGBE has a small automated test suite in `tests/`. It covers the gap buffer, UTF-8 and tab helpers, delta undo, and editor insert/delete/undo/redo/visual-mode paths. Run it with:
+
+```bash
+make test
+# or directly:
+ctest --test-dir build-debug --output-on-failure
+```
+
+Tests use renderer stubs, so they run without a window or GPU. Add a focused test to `tests/test_rmgbe.c` whenever you change core editing behavior. Please also test manually before submitting:
 
 - Build in **both** debug and release modes if possible.
 - Exercise the feature or fix you changed, plus nearby behavior.
 - Try the common editing paths: insert and normal mode, undo/redo, copy/paste, search (`Ctrl+F`, `F3`), saving, opening files from the sidebar, and the built-in terminal.
-- Test edge cases: empty files, very long lines, large files, files without a trailing newline, and Unicode or unusual input where relevant.
+- Test edge cases: empty files, blank lines, very long lines, large files, files without a trailing newline, CRLF files, and Unicode or unusual input where relevant.
 - If your change touches rendering, input, or file paths, test on more than one OS when you can, and say in your PR which platforms you tested.
-
-Contributions that add automated tests are especially welcome.
 
 ## Submitting a Pull Request
 
@@ -180,7 +190,7 @@ Themes are plain-text `.rmgtheme` files. To share one, include the file in a pul
 
 ## License
 
-RMGBE is released under a custom non-commercial license. Please read the [LICENSE](LICENSE) before contributing. By submitting a contribution, you agree that your work will be distributed under the same license as the project.
+RMGBE is released under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0), a source-available license that permits noncommercial use. Please read the [LICENSE](LICENSE) before contributing. By submitting a contribution, you agree that your work will be distributed under the same license as the project.
 
 ---
 

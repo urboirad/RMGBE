@@ -1,4 +1,5 @@
 #include "text_renderer.h"
+#include "text.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,65 +9,94 @@
 #include "stb_truetype.h"
 #include "font_data.h"
 
-#define ATLAS_W    512
-#define ATLAS_H    512
+/* The atlas covers printable ASCII plus Latin-1 so common UTF-8 text can be
+ * displayed without falling back to boxes.  Codepoints outside this range are
+ * drawn as '?' rather than corrupting the rest of the line. */
+#define ATLAS_W     2048
+#define ATLAS_H     2048
 #define FIRST_CHAR  32
-#define NUM_CHARS   96
+#define NUM_CHARS   224
 
 static stbtt_bakedchar g_chars[NUM_CHARS];
 static GLuint g_texture;
+static int    g_ready = 0;
 static int    g_win_w = 1280, g_win_h = 720;
 static float  g_char_w = 10.0f, g_char_h = 18.0f;
 
 void text_renderer_set_win_size(int w, int h) { g_win_w = w; g_win_h = h; }
 
-void text_renderer_init(const char *font_path, float font_size) {
+static int bake_font(const unsigned char *ttf, float font_size) {
+    unsigned char *bitmap = calloc((size_t)ATLAS_W * ATLAS_H, 1);
+    if (!bitmap) return 0;
+
+    int ok = stbtt_BakeFontBitmap(ttf, 0, font_size, bitmap,
+                                  ATLAS_W, ATLAS_H,
+                                  FIRST_CHAR, NUM_CHARS, g_chars);
+    if (ok < 0) {
+        free(bitmap);
+        fprintf(stderr, "text_renderer: font atlas is too small for %.1fpt\n",
+                font_size);
+        return 0;
+    }
+
+    float cx = 0, cy = 0;
+    stbtt_aligned_quad q;
+    stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, 'M' - FIRST_CHAR,
+                       &cx, &cy, &q, 1);
+    g_char_w = cx > 0 ? cx : font_size * 0.6f;
+    g_char_h = font_size;
+
+    if (g_texture) {
+        glDeleteTextures(1, &g_texture);
+        g_texture = 0;
+    }
+    glGenTextures(1, &g_texture);
+    glBindTexture(GL_TEXTURE_2D, g_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_W, ATLAS_H, 0,
+                 GL_ALPHA, GL_UNSIGNED_BYTE, bitmap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    free(bitmap);
+    g_ready = g_texture != 0;
+    return g_ready;
+}
+
+int text_renderer_init(const char *font_path, float font_size) {
+    if (!font_path || !font_path[0]) {
+        fprintf(stderr, "text_renderer: empty font path\n");
+        return 0;
+    }
     FILE *f = fopen(font_path, "rb");
-    if (!f) { fprintf(stderr, "text_renderer: cannot open font: %s\n", font_path); return; }
-    fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
-    unsigned char *ttf = malloc(sz);
-    if (!ttf) { fclose(f); return; }
-    fread(ttf, 1, sz, f); fclose(f);
+    if (!f) {
+        fprintf(stderr, "text_renderer: cannot open font: %s\n", font_path);
+        return 0;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }
+    long sz = ftell(f);
+    if (sz <= 0) { fclose(f); return 0; }
+    rewind(f);
+    unsigned char *ttf = malloc((size_t)sz);
+    if (!ttf) { fclose(f); return 0; }
+    size_t got = fread(ttf, 1, (size_t)sz, f);
+    fclose(f);
+    if (got != (size_t)sz) { free(ttf); return 0; }
 
-    unsigned char *bitmap = calloc(ATLAS_W * ATLAS_H, 1);
-    if (!bitmap) { free(ttf); return; }
-    stbtt_BakeFontBitmap(ttf, 0, font_size, bitmap, ATLAS_W, ATLAS_H, FIRST_CHAR, NUM_CHARS, g_chars);
+    int ok = bake_font(ttf, font_size);
     free(ttf);
-
-    // Measure 'M' for monospace cell size
-    float cx = 0, cy = 0;
-    stbtt_aligned_quad q;
-    stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, 'M' - FIRST_CHAR, &cx, &cy, &q, 1);
-    g_char_w = cx;
-    g_char_h = font_size;
-
-    glGenTextures(1, &g_texture);
-    glBindTexture(GL_TEXTURE_2D, g_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_W, ATLAS_H, 0, GL_ALPHA, GL_UNSIGNED_BYTE, bitmap);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    free(bitmap);
+    return ok;
 }
 
-void text_renderer_init_embedded(float font_size) {
-    unsigned char *bitmap = calloc(ATLAS_W * ATLAS_H, 1);
-    stbtt_BakeFontBitmap(embedded_font, 0, font_size, bitmap, ATLAS_W, ATLAS_H, FIRST_CHAR, NUM_CHARS, g_chars);
-
-    float cx = 0, cy = 0;
-    stbtt_aligned_quad q;
-    stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, 'M' - FIRST_CHAR, &cx, &cy, &q, 1);
-    g_char_w = cx;
-    g_char_h = font_size;
-
-    glGenTextures(1, &g_texture);
-    glBindTexture(GL_TEXTURE_2D, g_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_W, ATLAS_H, 0, GL_ALPHA, GL_UNSIGNED_BYTE, bitmap);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    free(bitmap);
+int text_renderer_init_embedded(float font_size) {
+    return bake_font(embedded_font, font_size);
 }
 
-void text_renderer_free(void) { glDeleteTextures(1, &g_texture); }
+void text_renderer_free(void) {
+    if (g_texture) {
+        glDeleteTextures(1, &g_texture);
+        g_texture = 0;
+    }
+    g_ready = 0;
+}
 
 float text_char_width(void)  { return g_char_w; }
 float text_char_height(void) { return g_char_h; }
@@ -124,22 +154,32 @@ void draw_rect_gradient(float x, float y, float w, float h,
     rect_impl(x, y, w, h, r1, g1, b1, 1.0f, r2, g2, b2, 1.0f, vertical);
 }
 
+static int glyph_index(unsigned int cp) {
+    if (cp < FIRST_CHAR || cp >= FIRST_CHAR + NUM_CHARS) cp = '?';
+    return (int)(cp - FIRST_CHAR);
+}
+
 void draw_text(const char *text, float x, float y, float r, float g, float b) {
+    if (!g_ready || !text) return;
+    int len = (int)strlen(text);
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, g_texture);
     set_ortho();
     glColor3f(r, g, b);
     glBegin(GL_QUADS);
-    while (*text) {
-        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &x, &y, &q, 1);
-            glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
-            glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
-            glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
-            glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
-        }
-        ++text;
+    int pos = 0;
+    while (pos < len) {
+        unsigned int cp;
+        int n = text_utf8_decode(text + pos, len - pos, &cp);
+        if (n <= 0) n = 1;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, glyph_index(cp),
+                           &x, &y, &q, 1);
+        glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
+        glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
+        glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
+        glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+        pos += n;
     }
     glEnd();
     pop_ortho();
@@ -154,36 +194,49 @@ void text_renderer_begin(void) {
 }
 
 void batch_text(const char *text, float *x, float y, float r, float g, float b) {
+    if (!g_ready || !text || !x) return;
     glColor3f(r, g, b);
     float cx = *x;
-    while (*text) {
-        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &y, &q, 1);
-            glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
-            glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
-            glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
-            glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
-        }
-        ++text;
+    int len = text ? (int)strlen(text) : 0;
+    int pos = 0;
+    while (text && pos < len) {
+        unsigned int cp;
+        int n = text_utf8_decode(text + pos, len - pos, &cp);
+        if (n <= 0) n = 1;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, glyph_index(cp),
+                           &cx, &y, &q, 1);
+        glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
+        glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
+        glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
+        glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+        pos += n;
     }
     *x = cx;
 }
 
 void batch_text_len(const char *text, int len, float *x, float y, float r, float g, float b) {
+    if (!g_ready || !text || !x || len <= 0) return;
     glColor3f(r, g, b);
     float cx = *x;
-    const char *end = text + len;
-    while (text < end) {
-        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &y, &q, 1);
-            glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
-            glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
-            glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
-            glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+    int pos = 0;
+    while (pos < len) {
+        unsigned int cp;
+        int n = text_utf8_decode(text + pos, len - pos, &cp);
+        if (n <= 0) n = 1;
+        if (cp == '\t') {
+            cx += TEXT_TAB_WIDTH * g_char_w;
+            pos += n;
+            continue;
         }
-        ++text;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, glyph_index(cp),
+                           &cx, &y, &q, 1);
+        glTexCoord2f(q.s0, q.t0); glVertex2f(q.x0, q.y0);
+        glTexCoord2f(q.s1, q.t0); glVertex2f(q.x1, q.y0);
+        glTexCoord2f(q.s1, q.t1); glVertex2f(q.x1, q.y1);
+        glTexCoord2f(q.s0, q.t1); glVertex2f(q.x0, q.y1);
+        pos += n;
     }
     *x = cx;
 }
@@ -196,13 +249,16 @@ void text_renderer_end(void) {
 
 float text_measure_len(const char *text, int len) {
     float cx = 0, cy = 0;
-    const char *end = text + len;
-    while (text < end) {
-        if ((unsigned char)*text >= FIRST_CHAR && (unsigned char)*text < FIRST_CHAR + NUM_CHARS) {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, *text - FIRST_CHAR, &cx, &cy, &q, 1);
-        }
-        ++text;
+    int pos = 0;
+    if (!g_ready || !text || len <= 0) return 0;
+    while (pos < len) {
+        unsigned int cp;
+        int n = text_utf8_decode(text + pos, len - pos, &cp);
+        if (n <= 0) n = 1;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(g_chars, ATLAS_W, ATLAS_H, glyph_index(cp),
+                           &cx, &cy, &q, 1);
+        pos += n;
     }
     return cx;
 }

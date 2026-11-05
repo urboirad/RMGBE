@@ -7,9 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #endif
 
 #include "tinyfiledialogs.h"
@@ -43,10 +40,8 @@ static int g_focus = 0;
 static double g_last_time = 0.0;
 static float g_editor_x, g_editor_y;
 
-// FPS counter
-static int   g_fps_frame_count = 0;
-static double g_fps_last_update = 0.0;
-static float  g_fps_value = 0.0f;
+/* Event-driven redraw: callbacks set this when something visible changed. */
+static int g_needs_redraw = 1;
 
 // Popups
 static int g_about_open = 0;
@@ -70,29 +65,6 @@ static float  g_theme_list_scroll = 0;   // scroll offset for color list
 #define THEME_LIST_Y  48.0f   // list top, relative to modal top
 #define THEME_ROW_H   24.0f   // compact rows to fit more entries
 #define THEME_LIST_MAX_H 400.0f  // max visible height for color list
-
-static void get_exe_dir(char *buf, int len) {
-#ifdef _WIN32
-    GetModuleFileNameA(NULL, buf, len);
-    // Remove the exe filename, keep just the directory
-    char *last = strrchr(buf, '\\');
-    if (last) *last = '\0';
-#elif defined(__APPLE__)
-    uint32_t size = len;
-    _NSGetExecutablePath(buf, &size);
-    char *last = strrchr(buf, '/');
-    if (last) *last = '\0';
-#else
-    ssize_t n = readlink("/proc/self/exe", buf, len - 1);
-    if (n > 0) {
-        buf[n] = '\0';
-        char *last = strrchr(buf, '/');
-        if (last) *last = '\0';
-    } else {
-        buf[0] = '\0';
-    }
-#endif
-}
 
 #ifdef _WIN32
 
@@ -147,19 +119,6 @@ static int check_dialog_backend(void) {
         }
     }
     return has_dialog_backend;
-}
-
-static int run_popen_dialog(const char *cmd, char *out, int out_len) {
-    FILE *p = popen(cmd, "r");
-    if (!p) return 0;
-    out[0] = '\0';
-    if (fgets(out, out_len, p)) {
-        size_t len = strlen(out);
-        while (len > 0 && (out[len-1] == '\n' || out[len-1] == '\r')) out[--len] = '\0';
-    }
-    int ok = pclose(p) == 0 && out[0] != '\0';
-    if (!ok) out[0] = '\0';
-    return ok;
 }
 
 static int open_folder_dialog(char *out, int out_len) {
@@ -217,6 +176,7 @@ static int save_file_dialog(char *out, int out_len, const char *filter, const ch
 // ---- Callbacks --------------------------------------------------------------
 static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods) {
     (void)win; (void)scancode;
+    g_needs_redraw = 1;
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
         // Theme editor input capture
         if (g_theme_open) {
@@ -323,6 +283,7 @@ static void cb_key(GLFWwindow *win, int key, int scancode, int action, int mods)
 
 static void cb_char(GLFWwindow *win, unsigned int cp) {
     (void)win;
+    g_needs_redraw = 1;
     if (g_theme_open) {
         if (g_theme_input_on && cp >= 32 && cp < 127) {
             int len = (int)strlen(g_theme_input);
@@ -358,10 +319,12 @@ static void cb_resize(GLFWwindow *win, int w, int h) {
     g_win_w = w; g_win_h = h;
     glViewport(0, 0, w, h);
     text_renderer_set_win_size(w, h);
+    g_needs_redraw = 1;
 }
 
 static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
     (void)mods;
+    g_needs_redraw = 1;
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
     double mx, my;
     glfwGetCursorPos(win, &mx, &my);
@@ -503,9 +466,9 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                                           "RMGBE Themes (*.rmgtheme)\0*.rmgtheme\0All Files (*.*)\0*.*\0")) {
                         char err[256];
                         if (!theme_load_file(path, err, sizeof(err)))
-                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%.120s", err);
                         else {
-                            snprintf(g_theme_msg, sizeof(g_theme_msg), "Loaded %s", g_theme.name);
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "Loaded %.60s", g_theme.name);
                             g_theme_sel = -1; g_theme_input_on = 0; g_theme_font_input_on = 0;
                             theme_apply_font();
                             theme_save_persisted();
@@ -519,7 +482,7 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
                                          "rmgtheme")) {
                         char err[256];
                         if (!theme_save_file(path, err, sizeof(err)))
-                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%s", err);
+                            snprintf(g_theme_msg, sizeof(g_theme_msg), "%.120s", err);
                         else {
                             snprintf(g_theme_msg, sizeof(g_theme_msg), "Saved");
                             theme_save_persisted();
@@ -606,11 +569,13 @@ static void cb_mouse_button(GLFWwindow *win, int button, int action, int mods) {
 
 static void cb_cursor_pos(GLFWwindow *win, double mx, double my) {
     (void)win;
+    if (g_editor.selecting) g_needs_redraw = 1;
     editor_mouse_move(&g_editor, (float)mx, (float)my, g_editor_x, g_editor_y);
 }
 
 static void cb_scroll(GLFWwindow *win, double xoff, double yoff) {
     (void)win; (void)xoff;
+    g_needs_redraw = 1;
     double mx, my;
     glfwGetCursorPos(win, &mx, &my);
     float sidebar_w = (float)PANEL_SIDEBAR_W;
@@ -847,7 +812,7 @@ static void draw_theme_editor(void) {
 }
 
 // ---- Main -------------------------------------------------------------------
-int main(void) {
+int main(int argc, char **argv) {
     if (!glfwInit()) return -1;
 
     GLFWwindow *win = glfwCreateWindow(g_win_w, g_win_h, "RMGBE " RMGBE_VERSION, NULL, NULL);
@@ -883,6 +848,12 @@ int main(void) {
 
     term_init(&g_term);
 
+    /* Optional command-line file argument: `RMGBE path/to/file`. */
+    if (argc > 1 && argv[1][0]) {
+        if (editor_open_file(&g_editor, argv[1]))
+            term_set_cwd(&g_term, g_editor.filepath);
+    }
+
     startup_audio_play(NULL);
 
     glfwSetKeyCallback(win, cb_key);
@@ -899,58 +870,64 @@ int main(void) {
         float  dt  = (float)(now - g_last_time);
         g_last_time = now;
 
-        glClearColor(0.14f, 0.14f, 0.18f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        /* Shell output arrives asynchronously and does not generate a GLFW
+         * event, so poll the pipe every iteration. */
+        if (term_poll_output(&g_term)) g_needs_redraw = 1;
 
-        float toolbar_h = 32.0f;
-        float sidebar_w = (float)PANEL_SIDEBAR_W;
-        float term_h    = (float)PANEL_TERMINAL_H;
-        float editor_y  = toolbar_h;
-        float editor_h  = g_win_h - toolbar_h - term_h;
-        float editor_w  = g_win_w - sidebar_w;
-
-        draw_toolbar((float)g_win_w);
-
-        // Draw the sidebar file list
-        fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h, 0, 0, 0);
-
-        // Line between sidebar and editor
-        draw_rect(sidebar_w, editor_y, 1.0f, editor_h, COLOR_MODAL_BORDER, 1.0f);
-
-        // Editor
-        g_editor_x = sidebar_w + 1.0f;
-        g_editor_y = editor_y;
         editor_check_external_change(&g_editor);
-        if (g_editor.external_change && !g_reload_prompt)
+        if (g_editor.external_change && !g_reload_prompt) {
             g_reload_prompt = 1;
-        editor_update(&g_editor, dt);
-        editor_render(&g_editor, g_editor_x, g_editor_y, editor_w, editor_h);
-
-        // Terminal
-        term_poll_output(&g_term);
-        term_render(&g_term, 0, g_win_h - term_h, (float)g_win_w, term_h);
-
-        // Green border on terminal when it has focus
-        if (g_focus == 1)
-            draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
-
-        draw_about();
-        draw_theme_editor();
-        draw_reload_prompt();
-
-        // FPS counter
-        g_fps_frame_count++;
-        if (now - g_fps_last_update >= 1.0) {
-            g_fps_value = (float)g_fps_frame_count / (float)(now - g_fps_last_update);
-            g_fps_frame_count = 0;
-            g_fps_last_update = now;
+            g_needs_redraw = 1;
         }
-        char fps_str[32];
-        snprintf(fps_str, sizeof(fps_str), "%.0f FPS", g_fps_value);
-        draw_text(fps_str, (float)g_win_w - 60.0f, 10.0f, 0.6f, 0.8f, 0.6f);
+        editor_update(&g_editor, dt);
 
-        glfwSwapBuffers(win);
-        glfwPollEvents();
+        int animating = editor_animation_active(&g_editor);
+        if (g_needs_redraw || animating || g_theme_open) {
+            glClearColor(0.14f, 0.14f, 0.18f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            float toolbar_h = 32.0f;
+            float sidebar_w = (float)PANEL_SIDEBAR_W;
+            float term_h    = (float)PANEL_TERMINAL_H;
+            float editor_y  = toolbar_h;
+            float editor_h  = g_win_h - toolbar_h - term_h;
+            float editor_w  = g_win_w - sidebar_w;
+
+            draw_toolbar((float)g_win_w);
+
+            // Draw the sidebar file list
+            fp_update(&g_fp, 0, editor_y, sidebar_w, editor_h, 0, 0, 0);
+
+            // Line between sidebar and editor
+            draw_rect(sidebar_w, editor_y, 1.0f, editor_h, COLOR_MODAL_BORDER, 1.0f);
+
+            // Editor
+            g_editor_x = sidebar_w + 1.0f;
+            g_editor_y = editor_y;
+            editor_render(&g_editor, g_editor_x, g_editor_y, editor_w, editor_h);
+
+            // Terminal
+            term_render(&g_term, 0, g_win_h - term_h, (float)g_win_w, term_h);
+
+            // Green border on terminal when it has focus
+            if (g_focus == 1)
+                draw_rect(0, g_win_h - term_h, (float)g_win_w, 2.0f, COLOR_CURSOR_HIGHLIGHT, 1.0f);
+
+            draw_about();
+            draw_theme_editor();
+            draw_reload_prompt();
+
+            glfwSwapBuffers(win);
+            g_needs_redraw = 0;
+        }
+
+        /* Wait for input instead of spinning.  Animate at ~60 Hz while the
+         * cursor is moving; otherwise wake periodically for shell output and
+         * the blinking text carets in the search / theme widgets. */
+        if (animating || g_theme_open)
+            glfwWaitEventsTimeout(1.0 / 60.0);
+        else
+            glfwWaitEventsTimeout(0.1);
     }
 
     term_free(&g_term);

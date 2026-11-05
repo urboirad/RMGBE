@@ -1,25 +1,24 @@
 @echo off
 setlocal
 
-set CC=C:\MinGW\bin\gcc.exe
-set RC=C:\MinGW\bin\windres.exe
-set FLAGS=-Wall -Wextra -Iinclude -Ivendor
-set SRC=main.c src\gap_buffer.c src\text_renderer.c src\editor.c src\file_panel.c src\terminal.c src\syntax.c src\theme.c src\startup_audio.c vendor\tinyfiledialogs.c
-set LIBS=-Llib -lglfw3 -lopengl32 -lgdi32 -lole32 -lcomdlg32 -lshell32 -lwinmm -lm
-set INC=-isystem "C:\MinGW\x86_64-w64-mingw32\include" -isystem "C:\MinGW\lib\gcc\x86_64-w64-mingw32\15.2.0\include"
-set OUT=output\RMGBE.exe
-set RES=output\resources.o
+rem All build settings live in CMakeLists.txt.  This wrapper only selects a
+rem configuration and invokes CMake, so it can never drift out of sync.
 
-if not exist output mkdir output
+cd /d "%~dp0"
 
-"%RC%" "src\resources.rc" -o "%RES%"
+set BUILD_DIR=build
+set CONFIG=Release
+if /I "%~1"=="debug" set CONFIG=Debug
 
-if "%1"=="debug" (
-    echo Building Debug...
-    "%CC%" -g3 -O0 %FLAGS% %INC% %SRC% "%RES%" -o %OUT% %LIBS%
-) else (
-    echo Building Release...
-    "%CC%" -Os -DNDEBUG -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -nostdinc %FLAGS% %INC% %SRC% "%RES%" -o %OUT% -s "-Wl,--gc-sections" %LIBS%
-)
+cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%CONFIG% -DBUILD_TESTING=OFF
+if errorlevel 1 goto :fail
 
-if %errorlevel% equ 0 (echo Done: %OUT%) else (echo Build failed)
+cmake --build "%BUILD_DIR%" --config %CONFIG% --parallel
+if errorlevel 1 goto :fail
+
+echo Done: %BUILD_DIR%\bin\RMGBE.exe
+exit /b 0
+
+:fail
+echo Build failed
+exit /b 1

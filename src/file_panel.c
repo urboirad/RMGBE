@@ -3,6 +3,7 @@
 #include "colors.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
@@ -54,7 +55,6 @@ static void scan_dir(FilePanel *fp, const char *path, int depth, int parent_idx)
         if (fp->count >= FP_MAX_ENTRIES) break;
 
         FileEntry *e = &fp->entries[fp->count];
-        int idx = fp->count;
         fp->count++;
         strncpy(e->name, ent->d_name, FP_NAME_LEN - 1);
         e->name[FP_NAME_LEN - 1] = '\0';
@@ -149,8 +149,12 @@ static void expand_dir(FilePanel *fp, int idx) {
     scan_dir(fp, e->full_path, e->depth + 1, idx);
     int added = fp->count - old_count;
     if (added <= 0) { e->expanded = 1; return; }
+    if (old_count + added > FP_MAX_ENTRIES) {
+        added = FP_MAX_ENTRIES - old_count;
+        if (added <= 0) { fp->count = old_count; e->expanded = 1; return; }
+    }
 
-    FileEntry *temp = malloc(added * sizeof(FileEntry));
+    FileEntry *temp = malloc((size_t)added * sizeof(FileEntry));
     if (!temp) { fp->count = old_count; return; }
     memcpy(temp, &fp->entries[old_count], added * sizeof(FileEntry));
     fp->count = old_count;
@@ -208,9 +212,14 @@ void fp_render(FilePanel *fp, float x, float y, float w, float h) {
             draw_rect(x, ty, w, row, COLOR_FP_SELECTION, 0.5f);
 
         char label[FP_NAME_LEN * 2 + 8];
-        char indent[32] = "";
-        for (int d = 0; d < e->depth && d < 8; d++) strcat(indent, "  ");
-        const char *arrow = e->is_dir ? (e->expanded ? "▾ " : "▸ ") : "  ";
+        char indent[32];
+        int ind = 0;
+        for (int d = 0; d < e->depth && d < 8 && ind + 2 < (int)sizeof(indent); d++) {
+            indent[ind++] = ' ';
+            indent[ind++] = ' ';
+        }
+        indent[ind] = '\0';
+        const char *arrow = e->is_dir ? (e->expanded ? "v " : "> ") : "  ";
         snprintf(label, sizeof(label), "%s%s%s", indent, arrow, e->name);
 
         if (e->is_dir)
